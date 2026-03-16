@@ -8,19 +8,33 @@ from app.config import settings
 
 
 _ALLOWED_KEYS = {
+    "llm_failover_mode",
     "openai_api_base",
     "openai_api_key",
     "llm_model",
     "llm_temperature",
+    "openai_api_base_secondary",
+    "openai_api_key_secondary",
+    "llm_model_secondary",
+    "llm_temperature_secondary",
     "tavily_api_key",
+    "zhihu_cookie",
+    "weibo_cookie",
 }
 
 _DEFAULTS: dict[str, Any] = {
+    "llm_failover_mode": "single",
     "openai_api_base": settings.openai_api_base,
     "openai_api_key": settings.openai_api_key,
     "llm_model": settings.llm_model,
     "llm_temperature": settings.llm_temperature,
+    "openai_api_base_secondary": "",
+    "openai_api_key_secondary": "",
+    "llm_model_secondary": "",
+    "llm_temperature_secondary": settings.llm_temperature,
     "tavily_api_key": settings.tavily_api_key,
+    "zhihu_cookie": "",
+    "weibo_cookie": "",
 }
 
 _cache: dict[str, Any] = {"data": None, "ts": 0.0}

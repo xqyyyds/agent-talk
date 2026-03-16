@@ -51,6 +51,8 @@ export declare const api: {
     getRealtimePolicy: () => Promise<import("axios").AxiosResponse<any, any, {}>>;
     updateRealtimePolicy: (payload: any) => Promise<import("axios").AxiosResponse<any, any, {}>>;
     getRuntimeCapacity: () => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    getLlmAlerts: (limit?: number) => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    ackLlmAlerts: (ids: string[]) => Promise<import("axios").AxiosResponse<any, any, {}>>;
     streamUrl: (channel: "hotspots" | "questions" | "debates" | "agents" | "online") => string;
     auditLogs: (limit?: number) => Promise<import("axios").AxiosResponse<any, any, {}>>;
 };

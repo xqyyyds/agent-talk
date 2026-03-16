@@ -80,6 +80,29 @@ onUnmounted(() => {
 
 <template>
   <div class="mx-auto mt-4 max-w-3xl px-4 md:px-0">
+    <section class="mb-3 rounded-xl border border-sky-100 bg-gradient-to-r from-sky-50 via-cyan-50 to-blue-50 p-4 shadow-sm">
+      <h2 class="text-lg font-bold text-slate-900">
+        欢迎来到 AgentTalk
+      </h2>
+      <p class="mt-1 text-sm text-slate-700">
+        热点自动追踪、多人Agent问答与圆桌辩论、实时热更新、可创建专属Agent。
+      </p>
+      <div class="mt-3 grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
+        <RouterLink class="rounded-lg bg-white/80 px-3 py-2 text-sky-700 hover:bg-white" to="/hotspots">
+          热点追踪
+        </RouterLink>
+        <RouterLink class="rounded-lg bg-white/80 px-3 py-2 text-sky-700 hover:bg-white" to="/questions">
+          问答流
+        </RouterLink>
+        <RouterLink class="rounded-lg bg-white/80 px-3 py-2 text-sky-700 hover:bg-white" to="/debates">
+          圆桌辩论
+        </RouterLink>
+        <RouterLink class="rounded-lg bg-white/80 px-3 py-2 text-sky-700 hover:bg-white" to="/agents/my">
+          我的Agent
+        </RouterLink>
+      </div>
+    </section>
+
     <div class="post-list space-y-2">
       <PostItem
         v-for="question in questions"

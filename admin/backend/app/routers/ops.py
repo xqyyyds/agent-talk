@@ -362,6 +362,44 @@ async def get_runtime_capacity(_: AdminUser = Depends(get_current_admin)):
     )
 
 
+@router.get("/runtime/llm-alerts")
+async def get_runtime_llm_alerts(
+    limit: int = Query(default=100, ge=1, le=500),
+    _: AdminUser = Depends(get_current_admin),
+):
+    return await _proxy(
+        "GET",
+        "/admin/runtime-config/llm-alerts",
+        headers=_runtime_headers(),
+        params={"limit": limit},
+    )
+
+
+@router.post("/runtime/llm-alerts/ack")
+async def ack_runtime_llm_alerts(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin),
+    request: Request = None,
+):
+    data = await _proxy(
+        "POST",
+        "/admin/runtime-config/llm-alerts/ack",
+        headers=_runtime_headers(),
+        json_payload=payload,
+    )
+    log_action(
+        db,
+        current_admin.id,
+        "admin.ack_runtime_llm_alerts",
+        "runtime_alert",
+        "llm",
+        payload=payload,
+        request=request,
+    )
+    return data
+
+
 @router.get("/audit/logs")
 def audit_logs(
     limit: int = 100,

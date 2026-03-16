@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { onMounted, onUnmounted, reactive, ref } from "vue";
 import { api } from "../api";
 import { formatBeijingDateTime } from "../utils/datetime";
@@ -19,6 +19,18 @@ type CrawlerJob = {
   error_message: string;
 };
 
+type LlmAlert = {
+  id: string;
+  at: string;
+  scene: string;
+  primary_model: string;
+  secondary_model?: string;
+  primary_error: string;
+  fallback_succeeded: boolean;
+  secondary_error?: string;
+  acknowledged?: boolean;
+};
+
 const loading = ref(false);
 const output = ref("");
 
@@ -33,13 +45,25 @@ const notifiedFailedJobs = new Set<string>();
 
 const configSaving = ref(false);
 const showOpenAIKey = ref(false);
+const showSecondaryOpenAIKey = ref(false);
 const showTavilyKey = ref(false);
+
+const llmAlertsLoading = ref(false);
+const llmAlerts = ref<LlmAlert[]>([]);
+
 const runtimeConfig = reactive({
+  llm_failover_mode: "single",
   openai_api_base: "",
   openai_api_key: "",
   llm_model: "",
   llm_temperature: 0.7,
+  openai_api_base_secondary: "",
+  openai_api_key_secondary: "",
+  llm_model_secondary: "",
+  llm_temperature_secondary: 0.7,
   tavily_api_key: "",
+  zhihu_cookie: "",
+  weibo_cookie: "",
 });
 
 const qaPolicy = reactive({
@@ -117,7 +141,7 @@ async function runAction(action: () => Promise<any>) {
     output.value = JSON.stringify(data, null, 2);
     return data;
   } catch (err: any) {
-    output.value = `执行失败：\n${normalizeError(err)}`;
+    output.value = `执行失败:\n${normalizeError(err)}`;
     return null;
   } finally {
     loading.value = false;
@@ -182,7 +206,7 @@ async function loadCrawlerJobs(silent = false) {
     syncCrawlerPolling();
   } catch (err: any) {
     if (!silent) {
-      output.value = `加载爬虫任务失败：\n${normalizeError(err)}`;
+      output.value = `加载爬虫任务失败:\n${normalizeError(err)}`;
     }
   }
 }
@@ -198,7 +222,7 @@ async function triggerCrawler(source: CrawlerSource) {
     }
     await loadCrawlerJobs(true);
   } catch (err: any) {
-    output.value = `执行失败：\n${normalizeError(err)}`;
+    output.value = `执行失败:\n${normalizeError(err)}`;
     await loadCrawlerJobs(true);
   } finally {
     crawlerLoadingSource.value = null;
@@ -229,11 +253,18 @@ async function loadRuntimeConfig() {
   await runAction(async () => {
     const { data } = await api.getRuntimeConfig();
     const cfg = data?.data || {};
+    runtimeConfig.llm_failover_mode = cfg.llm_failover_mode || "single";
     runtimeConfig.openai_api_base = cfg.openai_api_base || "";
     runtimeConfig.openai_api_key = cfg.openai_api_key || "";
     runtimeConfig.llm_model = cfg.llm_model || "";
     runtimeConfig.llm_temperature = Number(cfg.llm_temperature ?? 0.7);
+    runtimeConfig.openai_api_base_secondary = cfg.openai_api_base_secondary || "";
+    runtimeConfig.openai_api_key_secondary = cfg.openai_api_key_secondary || "";
+    runtimeConfig.llm_model_secondary = cfg.llm_model_secondary || "";
+    runtimeConfig.llm_temperature_secondary = Number(cfg.llm_temperature_secondary ?? 0.7);
     runtimeConfig.tavily_api_key = cfg.tavily_api_key || "";
+    runtimeConfig.zhihu_cookie = cfg.zhihu_cookie || "";
+    runtimeConfig.weibo_cookie = cfg.weibo_cookie || "";
     return data;
   });
 }
@@ -242,18 +273,46 @@ async function saveRuntimeConfig() {
   configSaving.value = true;
   try {
     const payload = {
+      llm_failover_mode: runtimeConfig.llm_failover_mode,
       openai_api_base: runtimeConfig.openai_api_base,
       openai_api_key: runtimeConfig.openai_api_key,
       llm_model: runtimeConfig.llm_model,
       llm_temperature: Number(runtimeConfig.llm_temperature),
+      openai_api_base_secondary: runtimeConfig.openai_api_base_secondary,
+      openai_api_key_secondary: runtimeConfig.openai_api_key_secondary,
+      llm_model_secondary: runtimeConfig.llm_model_secondary,
+      llm_temperature_secondary: Number(runtimeConfig.llm_temperature_secondary),
       tavily_api_key: runtimeConfig.tavily_api_key,
+      zhihu_cookie: runtimeConfig.zhihu_cookie,
+      weibo_cookie: runtimeConfig.weibo_cookie,
     };
     const { data } = await api.updateRuntimeConfig(payload);
     output.value = JSON.stringify(data, null, 2);
   } catch (err: any) {
-    output.value = `保存失败：\n${normalizeError(err)}`;
+    output.value = `保存失败:\n${normalizeError(err)}`;
   } finally {
     configSaving.value = false;
+  }
+}
+
+async function loadLlmAlerts() {
+  llmAlertsLoading.value = true;
+  try {
+    const { data } = await api.getLlmAlerts(100);
+    llmAlerts.value = data?.data?.items || [];
+  } catch (err: any) {
+    output.value = `加载 LLM 告警失败:\n${normalizeError(err)}`;
+  } finally {
+    llmAlertsLoading.value = false;
+  }
+}
+
+async function ackLlmAlert(id: string) {
+  try {
+    await api.ackLlmAlerts([id]);
+    await loadLlmAlerts();
+  } catch (err: any) {
+    output.value = `确认告警失败:\n${normalizeError(err)}`;
   }
 }
 
@@ -273,7 +332,7 @@ async function loadPolicies() {
     Object.assign(realtimePolicy, realtimeRes.data?.data || {});
     capacitySnapshot.value = capacityRes.data?.data || null;
   } catch (err: any) {
-    output.value = `加载策略失败：\n${normalizeError(err)}`;
+    output.value = `加载策略失败:\n${normalizeError(err)}`;
   }
 }
 
@@ -284,7 +343,7 @@ async function saveQaPolicy() {
     await loadPolicies();
     output.value = "问答策略已更新";
   } catch (err: any) {
-    output.value = `保存问答策略失败：\n${normalizeError(err)}`;
+    output.value = `保存问答策略失败:\n${normalizeError(err)}`;
   } finally {
     policySaving.value = false;
   }
@@ -297,7 +356,7 @@ async function saveDebatePolicy() {
     await loadPolicies();
     output.value = "辩论策略已更新";
   } catch (err: any) {
-    output.value = `保存辩论策略失败：\n${normalizeError(err)}`;
+    output.value = `保存辩论策略失败:\n${normalizeError(err)}`;
   } finally {
     policySaving.value = false;
   }
@@ -310,7 +369,7 @@ async function saveSchedulerPolicy() {
     await loadPolicies();
     output.value = "调度策略已更新";
   } catch (err: any) {
-    output.value = `保存调度策略失败：\n${normalizeError(err)}`;
+    output.value = `保存调度策略失败:\n${normalizeError(err)}`;
   } finally {
     policySaving.value = false;
   }
@@ -323,7 +382,7 @@ async function saveRealtimePolicy() {
     await loadPolicies();
     output.value = "实时策略已更新";
   } catch (err: any) {
-    output.value = `保存实时策略失败：\n${normalizeError(err)}`;
+    output.value = `保存实时策略失败:\n${normalizeError(err)}`;
   } finally {
     policySaving.value = false;
   }
@@ -333,6 +392,7 @@ onMounted(async () => {
   await Promise.all([
     refreshDebateStatus(),
     loadRuntimeConfig(),
+    loadLlmAlerts(),
     loadCrawlerJobs(),
     loadPolicies(),
   ]);
@@ -381,6 +441,25 @@ onUnmounted(() => {
       <p class="form-note" style="margin-bottom: 10px">
         已启用同源互斥。任务失败时会弹窗提醒你更新 Cookie。
       </p>
+      <div class="stack" style="margin-bottom: 10px">
+        <label>知乎 Cookie（快捷更新）</label>
+        <textarea
+          v-model="runtimeConfig.zhihu_cookie"
+          rows="3"
+          placeholder="粘贴完整知乎 Cookie，保存后立即生效"
+        />
+        <label>微博 Cookie（快捷更新）</label>
+        <textarea
+          v-model="runtimeConfig.weibo_cookie"
+          rows="3"
+          placeholder="粘贴完整微博 Cookie，保存后立即生效"
+        />
+        <div class="row">
+          <button class="primary" :disabled="configSaving" @click="saveRuntimeConfig">
+            保存 Cookie
+          </button>
+        </div>
+      </div>
       <div class="table-wrap">
         <table class="table">
           <thead>
@@ -389,7 +468,7 @@ onUnmounted(() => {
               <th>来源</th>
               <th>状态</th>
               <th>耗时(秒)</th>
-              <th>结束时间（北京时间）</th>
+              <th>结束时间(北京时间)</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -427,9 +506,9 @@ onUnmounted(() => {
         <input v-model.number="qaPolicy.jitter_min" type="number" min="0.5" max="1" step="0.01" />
         <label>抖动最大值</label>
         <input v-model.number="qaPolicy.jitter_max" type="number" min="1" max="2" step="0.01" />
-        <label>最大并发</label>
+        <label>最大并行度</label>
         <input v-model.number="qaPolicy.max_parallelism" type="number" min="1" max="8" />
-        <label>EWMA 平滑系数</label>
+        <label>EWMA平滑系数</label>
         <input v-model.number="qaPolicy.ewma_alpha" type="number" min="0.05" max="0.95" step="0.01" />
       </div>
       <div class="row" style="margin-top: 10px">
@@ -453,7 +532,7 @@ onUnmounted(() => {
         <input v-model.number="debatePolicy.jitter_min" type="number" min="0.5" max="1" step="0.01" />
         <label>抖动最大值</label>
         <input v-model.number="debatePolicy.jitter_max" type="number" min="1" max="2" step="0.01" />
-        <label><input v-model="debatePolicy.new_agent_auto_join" type="checkbox" /> 新 Agent 自动加入</label>
+        <label><input v-model="debatePolicy.new_agent_auto_join" type="checkbox" /> 新Agent自动加入</label>
       </div>
       <div class="row" style="margin-top: 10px">
         <button class="primary" :disabled="policySaving" @click="saveDebatePolicy">保存辩论策略</button>
@@ -480,7 +559,7 @@ onUnmounted(() => {
     <div class="panel col-6">
       <p class="section-title">实时策略</p>
       <div class="stack">
-        <label><input v-model="realtimePolicy.sse_enabled" type="checkbox" /> 启用 SSE</label>
+        <label><input v-model="realtimePolicy.sse_enabled" type="checkbox" /> 启用SSE</label>
         <label>轮询回退间隔(秒)</label>
         <input v-model.number="realtimePolicy.fallback_poll_seconds" type="number" min="1" max="120" />
       </div>
@@ -490,24 +569,43 @@ onUnmounted(() => {
     </div>
 
     <div class="panel col-12">
-      <p class="section-title">模型与搜索运行配置</p>
+      <p class="section-title">LLM容灾配置</p>
       <div class="stack">
-        <label>LLM 接口地址</label>
+        <label>容灾模式</label>
+        <select v-model="runtimeConfig.llm_failover_mode">
+          <option value="single">single（仅主模型）</option>
+          <option value="dual_fallback">dual_fallback（主失败自动回退）</option>
+        </select>
+
+        <label>主模型 API Base</label>
         <input v-model="runtimeConfig.openai_api_base" placeholder="https://api.example.com/v1" />
-
-        <label>LLM 模型</label>
+        <label>主模型</label>
         <input v-model="runtimeConfig.llm_model" placeholder="gpt-5-mini" />
-
-        <label>LLM 温度</label>
+        <label>主模型温度</label>
         <input v-model.number="runtimeConfig.llm_temperature" type="number" min="0" max="2" step="0.1" />
-
-        <label>LLM API Key</label>
+        <label>主模型 API Key</label>
         <div class="row" style="gap: 8px">
           <input v-model="runtimeConfig.openai_api_key" :type="showOpenAIKey ? 'text' : 'password'" placeholder="sk-..." style="flex: 1" />
           <button class="secondary" type="button" @click="showOpenAIKey = !showOpenAIKey">
             {{ showOpenAIKey ? "隐藏" : "显示" }}
           </button>
         </div>
+
+        <template v-if="runtimeConfig.llm_failover_mode === 'dual_fallback'">
+          <label>备模型 API Base</label>
+          <input v-model="runtimeConfig.openai_api_base_secondary" placeholder="https://api.example.com/v1" />
+          <label>备模型</label>
+          <input v-model="runtimeConfig.llm_model_secondary" placeholder="gpt-5-mini" />
+          <label>备模型温度</label>
+          <input v-model.number="runtimeConfig.llm_temperature_secondary" type="number" min="0" max="2" step="0.1" />
+          <label>备模型 API Key</label>
+          <div class="row" style="gap: 8px">
+            <input v-model="runtimeConfig.openai_api_key_secondary" :type="showSecondaryOpenAIKey ? 'text' : 'password'" placeholder="sk-..." style="flex: 1" />
+            <button class="secondary" type="button" @click="showSecondaryOpenAIKey = !showSecondaryOpenAIKey">
+              {{ showSecondaryOpenAIKey ? "隐藏" : "显示" }}
+            </button>
+          </div>
+        </template>
 
         <label>Tavily API Key</label>
         <div class="row" style="gap: 8px">
@@ -520,6 +618,48 @@ onUnmounted(() => {
       <div class="row" style="margin: 10px 0 10px">
         <button class="primary" :disabled="configSaving" @click="saveRuntimeConfig">保存配置</button>
         <button class="secondary" :disabled="loading" @click="loadRuntimeConfig">重新加载</button>
+      </div>
+    </div>
+
+    <div class="panel col-12">
+      <p class="section-title">LLM回退告警</p>
+      <div class="row" style="margin-bottom: 10px">
+        <button class="secondary" :disabled="llmAlertsLoading" @click="loadLlmAlerts">
+          {{ llmAlertsLoading ? "加载中..." : "刷新告警" }}
+        </button>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>时间(北京时间)</th>
+              <th>场景</th>
+              <th>主模型</th>
+              <th>备模型</th>
+              <th>回退结果</th>
+              <th>错误摘要</th>
+              <th>确认</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="alert in llmAlerts" :key="alert.id">
+              <td>{{ formatDateTime(alert.at) }}</td>
+              <td>{{ alert.scene }}</td>
+              <td>{{ alert.primary_model }}</td>
+              <td>{{ alert.secondary_model || "-" }}</td>
+              <td>{{ alert.fallback_succeeded ? "成功" : "失败" }}</td>
+              <td class="mono">{{ alert.primary_error }}</td>
+              <td>
+                <button class="secondary" :disabled="!!alert.acknowledged" @click="ackLlmAlert(alert.id)">
+                  {{ alert.acknowledged ? "已确认" : "确认" }}
+                </button>
+              </td>
+            </tr>
+            <tr v-if="llmAlerts.length === 0">
+              <td colspan="7" style="text-align: center; opacity: 0.8">暂无告警</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 

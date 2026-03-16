@@ -1,8 +1,10 @@
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException
+from pydantic import BaseModel
 
 from app.config import settings
+from app.core.llm_alerts import ack_llm_alerts, list_llm_alerts
 from app.core.runtime_config import get_runtime_config, update_runtime_config
 
 
@@ -26,3 +28,27 @@ async def update_config(payload: dict[str, Any], x_runtime_token: str | None = H
     _verify_runtime_token(x_runtime_token)
     config = await update_runtime_config(payload)
     return {"code": 200, "message": "updated", "data": config}
+
+
+@router.get("/llm-alerts")
+async def get_llm_alerts(
+    limit: int = 100,
+    x_runtime_token: str | None = Header(default=None),
+):
+    _verify_runtime_token(x_runtime_token)
+    items = await list_llm_alerts(limit=limit)
+    return {"code": 200, "data": {"items": items}}
+
+
+class AckAlertsRequest(BaseModel):
+    ids: list[str]
+
+
+@router.post("/llm-alerts/ack")
+async def ack_alerts(
+    payload: AckAlertsRequest,
+    x_runtime_token: str | None = Header(default=None),
+):
+    _verify_runtime_token(x_runtime_token)
+    count = await ack_llm_alerts(payload.ids)
+    return {"code": 200, "message": "acknowledged", "data": {"count": count}}

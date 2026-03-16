@@ -11,6 +11,7 @@ from typing import Any
 from redis.asyncio import Redis
 
 from app.config import settings
+from app.core.runtime_config import get_runtime_config
 
 
 JOB_INDEX_KEY = "crawler:jobs:index"
@@ -30,6 +31,15 @@ SCRIPT_BY_SOURCE = {
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except Exception:
+        return None
 
 
 class CrawlerJobError(Exception):
@@ -79,7 +89,8 @@ class CrawlerJobManager:
         line = message.strip()
         if not line:
             return
-        log_line = f"{datetime.now(timezone.utc).strftime('%H:%M:%S')} {line}"
+        # Use local container timezone (Asia/Shanghai in our image) for readable ops logs.
+        log_line = f"{datetime.now().strftime('%H:%M:%S')} {line}"
         logs_key = self._job_logs_key(job_id)
         await redis.rpush(logs_key, log_line)
         await redis.ltrim(logs_key, -MAX_LOG_LINES, -1)
@@ -92,6 +103,64 @@ class CrawlerJobManager:
         payload["updated_at"] = json.dumps(_now_iso(), ensure_ascii=False)
         await redis.hset(self._job_key(job_id), mapping=payload)
         await redis.expire(self._job_key(job_id), STALE_CLEANUP_SECONDS)
+
+    async def _reconcile_stale_jobs(
+        self, redis: Redis, source: str | None = None
+    ) -> None:
+        """
+        Recover orphaned jobs that are still marked queued/running after process restart.
+        A job is considered stale when:
+        - status is queued/running
+        - no local active task
+        - no source lock points to this job
+        - elapsed time exceeds timeout_seconds
+        """
+        now = datetime.now(timezone.utc)
+        ids = await redis.lrange(JOB_INDEX_KEY, 0, MAX_JOB_HISTORY - 1)
+        for job_id in ids:
+            raw = await redis.hgetall(self._job_key(job_id))
+            if not raw:
+                continue
+            job = self._decode_job(raw)
+            job_source = str(job.get("source") or "").strip().lower()
+            if source and job_source != source:
+                continue
+            status = str(job.get("status") or "").strip().lower()
+            if status not in RUNNING_STATUSES:
+                continue
+
+            task = self._active_tasks.get(job_id)
+            if task is not None and not task.done():
+                continue
+
+            lock_owner = await redis.get(self._source_running_key(job_source))
+            if lock_owner == job_id:
+                continue
+
+            timeout_seconds = int(job.get("timeout_seconds") or self._job_timeout_seconds)
+            started_at = _parse_iso(job.get("started_at")) or _parse_iso(job.get("created_at"))
+            if started_at is None:
+                started_at = now
+            elapsed = int((now - started_at).total_seconds())
+            if elapsed < timeout_seconds:
+                continue
+
+            await self._append_log(
+                redis,
+                job_id,
+                "[system] stale running job recovered after restart",
+            )
+            await self._update_job(
+                redis,
+                job_id,
+                {
+                    "status": "timeout",
+                    "finished_at": _now_iso(),
+                    "duration_seconds": elapsed,
+                    "exit_code": None,
+                    "error_message": "stale running job recovered",
+                },
+            )
 
     @staticmethod
     def _decode_job(raw: dict[str, str]) -> dict[str, Any]:
@@ -120,6 +189,7 @@ class CrawlerJobManager:
 
         redis = await self._redis()
         try:
+            await self._reconcile_stale_jobs(redis, source=source)
             locked = await redis.set(lock_key, job_id, nx=True, ex=self._lock_ttl_seconds)
             if not locked:
                 running_job_id = await redis.get(lock_key)
@@ -178,13 +248,24 @@ class CrawlerJobManager:
             )
             await self._append_log(redis, job_id, f"[system] starting {script_name}")
 
+            runtime_cfg = await get_runtime_config()
+            subprocess_env = {**os.environ}
+            zhihu_cookie = str(runtime_cfg.get("zhihu_cookie", "") or "").strip()
+            weibo_cookie = str(runtime_cfg.get("weibo_cookie", "") or "").strip()
+            if zhihu_cookie:
+                subprocess_env["ZHIHU_COOKIE"] = zhihu_cookie
+            if weibo_cookie:
+                subprocess_env["WEIBO_COOKIE"] = weibo_cookie
+            subprocess_env["PYTHONUNBUFFERED"] = "1"
+
             process = await asyncio.create_subprocess_exec(
                 sys.executable,
+                "-u",
                 str(script_path),
                 cwd=str(self._scripts_dir),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env={**os.environ},
+                env=subprocess_env,
             )
 
             async def _consume_stream(stream: asyncio.StreamReader | None, tag: str) -> None:
@@ -283,6 +364,7 @@ class CrawlerJobManager:
     async def get_job(self, job_id: str) -> dict[str, Any]:
         redis = await self._redis()
         try:
+            await self._reconcile_stale_jobs(redis)
             raw = await redis.hgetall(self._job_key(job_id))
         finally:
             await redis.aclose()
@@ -298,6 +380,7 @@ class CrawlerJobManager:
         limit = max(1, min(limit, 100))
         redis = await self._redis()
         try:
+            await self._reconcile_stale_jobs(redis, source=source_filter)
             ids = await redis.lrange(JOB_INDEX_KEY, 0, max(limit * 4 - 1, 0))
             jobs: list[dict[str, Any]] = []
             for job_id in ids:

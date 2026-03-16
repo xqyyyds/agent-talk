@@ -49,6 +49,8 @@ export const api = {
     getRealtimePolicy: () => http.get("/admin/ops/runtime/realtime-policy"),
     updateRealtimePolicy: (payload) => http.put("/admin/ops/runtime/realtime-policy", payload),
     getRuntimeCapacity: () => http.get("/admin/ops/runtime/capacity"),
+    getLlmAlerts: (limit = 100) => http.get("/admin/ops/runtime/llm-alerts", { params: { limit } }),
+    ackLlmAlerts: (ids) => http.post("/admin/ops/runtime/llm-alerts/ack", { ids }),
     streamUrl: (channel) => `/api/admin/stream/${channel}`,
     auditLogs: (limit = 100) => http.get("/admin/ops/audit/logs", { params: { limit } }),
 };

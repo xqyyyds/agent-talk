@@ -12,13 +12,23 @@ const selectedJobLogs = ref([]);
 const notifiedFailedJobs = new Set();
 const configSaving = ref(false);
 const showOpenAIKey = ref(false);
+const showSecondaryOpenAIKey = ref(false);
 const showTavilyKey = ref(false);
+const llmAlertsLoading = ref(false);
+const llmAlerts = ref([]);
 const runtimeConfig = reactive({
+    llm_failover_mode: "single",
     openai_api_base: "",
     openai_api_key: "",
     llm_model: "",
     llm_temperature: 0.7,
+    openai_api_base_secondary: "",
+    openai_api_key_secondary: "",
+    llm_model_secondary: "",
+    llm_temperature_secondary: 0.7,
     tavily_api_key: "",
+    zhihu_cookie: "",
+    weibo_cookie: "",
 });
 const qaPolicy = reactive({
     enabled: true,
@@ -86,7 +96,7 @@ async function runAction(action) {
         return data;
     }
     catch (err) {
-        output.value = `执行失败：\n${normalizeError(err)}`;
+        output.value = `执行失败:\n${normalizeError(err)}`;
         return null;
     }
     finally {
@@ -144,7 +154,7 @@ async function loadCrawlerJobs(silent = false) {
     }
     catch (err) {
         if (!silent) {
-            output.value = `加载爬虫任务失败：\n${normalizeError(err)}`;
+            output.value = `加载爬虫任务失败:\n${normalizeError(err)}`;
         }
     }
 }
@@ -160,7 +170,7 @@ async function triggerCrawler(source) {
         await loadCrawlerJobs(true);
     }
     catch (err) {
-        output.value = `执行失败：\n${normalizeError(err)}`;
+        output.value = `执行失败:\n${normalizeError(err)}`;
         await loadCrawlerJobs(true);
     }
     finally {
@@ -188,11 +198,18 @@ async function loadRuntimeConfig() {
     await runAction(async () => {
         const { data } = await api.getRuntimeConfig();
         const cfg = data?.data || {};
+        runtimeConfig.llm_failover_mode = cfg.llm_failover_mode || "single";
         runtimeConfig.openai_api_base = cfg.openai_api_base || "";
         runtimeConfig.openai_api_key = cfg.openai_api_key || "";
         runtimeConfig.llm_model = cfg.llm_model || "";
         runtimeConfig.llm_temperature = Number(cfg.llm_temperature ?? 0.7);
+        runtimeConfig.openai_api_base_secondary = cfg.openai_api_base_secondary || "";
+        runtimeConfig.openai_api_key_secondary = cfg.openai_api_key_secondary || "";
+        runtimeConfig.llm_model_secondary = cfg.llm_model_secondary || "";
+        runtimeConfig.llm_temperature_secondary = Number(cfg.llm_temperature_secondary ?? 0.7);
         runtimeConfig.tavily_api_key = cfg.tavily_api_key || "";
+        runtimeConfig.zhihu_cookie = cfg.zhihu_cookie || "";
+        runtimeConfig.weibo_cookie = cfg.weibo_cookie || "";
         return data;
     });
 }
@@ -200,20 +217,49 @@ async function saveRuntimeConfig() {
     configSaving.value = true;
     try {
         const payload = {
+            llm_failover_mode: runtimeConfig.llm_failover_mode,
             openai_api_base: runtimeConfig.openai_api_base,
             openai_api_key: runtimeConfig.openai_api_key,
             llm_model: runtimeConfig.llm_model,
             llm_temperature: Number(runtimeConfig.llm_temperature),
+            openai_api_base_secondary: runtimeConfig.openai_api_base_secondary,
+            openai_api_key_secondary: runtimeConfig.openai_api_key_secondary,
+            llm_model_secondary: runtimeConfig.llm_model_secondary,
+            llm_temperature_secondary: Number(runtimeConfig.llm_temperature_secondary),
             tavily_api_key: runtimeConfig.tavily_api_key,
+            zhihu_cookie: runtimeConfig.zhihu_cookie,
+            weibo_cookie: runtimeConfig.weibo_cookie,
         };
         const { data } = await api.updateRuntimeConfig(payload);
         output.value = JSON.stringify(data, null, 2);
     }
     catch (err) {
-        output.value = `保存失败：\n${normalizeError(err)}`;
+        output.value = `保存失败:\n${normalizeError(err)}`;
     }
     finally {
         configSaving.value = false;
+    }
+}
+async function loadLlmAlerts() {
+    llmAlertsLoading.value = true;
+    try {
+        const { data } = await api.getLlmAlerts(100);
+        llmAlerts.value = data?.data?.items || [];
+    }
+    catch (err) {
+        output.value = `加载 LLM 告警失败:\n${normalizeError(err)}`;
+    }
+    finally {
+        llmAlertsLoading.value = false;
+    }
+}
+async function ackLlmAlert(id) {
+    try {
+        await api.ackLlmAlerts([id]);
+        await loadLlmAlerts();
+    }
+    catch (err) {
+        output.value = `确认告警失败:\n${normalizeError(err)}`;
     }
 }
 async function loadPolicies() {
@@ -232,7 +278,7 @@ async function loadPolicies() {
         capacitySnapshot.value = capacityRes.data?.data || null;
     }
     catch (err) {
-        output.value = `加载策略失败：\n${normalizeError(err)}`;
+        output.value = `加载策略失败:\n${normalizeError(err)}`;
     }
 }
 async function saveQaPolicy() {
@@ -243,7 +289,7 @@ async function saveQaPolicy() {
         output.value = "问答策略已更新";
     }
     catch (err) {
-        output.value = `保存问答策略失败：\n${normalizeError(err)}`;
+        output.value = `保存问答策略失败:\n${normalizeError(err)}`;
     }
     finally {
         policySaving.value = false;
@@ -257,7 +303,7 @@ async function saveDebatePolicy() {
         output.value = "辩论策略已更新";
     }
     catch (err) {
-        output.value = `保存辩论策略失败：\n${normalizeError(err)}`;
+        output.value = `保存辩论策略失败:\n${normalizeError(err)}`;
     }
     finally {
         policySaving.value = false;
@@ -271,7 +317,7 @@ async function saveSchedulerPolicy() {
         output.value = "调度策略已更新";
     }
     catch (err) {
-        output.value = `保存调度策略失败：\n${normalizeError(err)}`;
+        output.value = `保存调度策略失败:\n${normalizeError(err)}`;
     }
     finally {
         policySaving.value = false;
@@ -285,7 +331,7 @@ async function saveRealtimePolicy() {
         output.value = "实时策略已更新";
     }
     catch (err) {
-        output.value = `保存实时策略失败：\n${normalizeError(err)}`;
+        output.value = `保存实时策略失败:\n${normalizeError(err)}`;
     }
     finally {
         policySaving.value = false;
@@ -295,6 +341,7 @@ onMounted(async () => {
     await Promise.all([
         refreshDebateStatus(),
         loadRuntimeConfig(),
+        loadLlmAlerts(),
         loadCrawlerJobs(),
         loadPolicies(),
     ]);
@@ -412,6 +459,33 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
 });
 /** @type {__VLS_StyleScopedClasses['form-note']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "stack" },
+    ...{ style: {} },
+});
+/** @type {__VLS_StyleScopedClasses['stack']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.textarea)({
+    value: (__VLS_ctx.runtimeConfig.zhihu_cookie),
+    rows: "3",
+    placeholder: "粘贴完整知乎 Cookie，保存后立即生效",
+});
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.textarea)({
+    value: (__VLS_ctx.runtimeConfig.weibo_cookie),
+    rows: "3",
+    placeholder: "粘贴完整微博 Cookie，保存后立即生效",
+});
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "row" },
+});
+/** @type {__VLS_StyleScopedClasses['row']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+    ...{ onClick: (__VLS_ctx.saveRuntimeConfig) },
+    ...{ class: "primary" },
+    disabled: (__VLS_ctx.configSaving),
+});
+/** @type {__VLS_StyleScopedClasses['primary']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "table-wrap" },
 });
 /** @type {__VLS_StyleScopedClasses['table-wrap']} */ ;
@@ -454,7 +528,7 @@ for (const [job] of __VLS_vFor((__VLS_ctx.crawlerJobs))) {
         ...{ onClick: (...[$event]) => {
                 __VLS_ctx.selectJob(job.job_id);
                 // @ts-ignore
-                [crawlerJobs, statusLabel, formatDateTime, selectJob,];
+                [runtimeConfig, runtimeConfig, saveRuntimeConfig, configSaving, crawlerJobs, statusLabel, formatDateTime, selectJob,];
             } },
         ...{ class: "secondary" },
     });
@@ -737,6 +811,16 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
 });
 /** @type {__VLS_StyleScopedClasses['stack']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.select, __VLS_intrinsics.select)({
+    value: (__VLS_ctx.runtimeConfig.llm_failover_mode),
+});
+__VLS_asFunctionalElement1(__VLS_intrinsics.option, __VLS_intrinsics.option)({
+    value: "single",
+});
+__VLS_asFunctionalElement1(__VLS_intrinsics.option, __VLS_intrinsics.option)({
+    value: "dual_fallback",
+});
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
     placeholder: "https://api.example.com/v1",
 });
@@ -770,13 +854,58 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ onClick: (...[$event]) => {
             __VLS_ctx.showOpenAIKey = !__VLS_ctx.showOpenAIKey;
             // @ts-ignore
-            [crawlerJobs, selectedJobLogs, selectedJobLogs, qaPolicy, qaPolicy, qaPolicy, qaPolicy, qaPolicy, qaPolicy, qaPolicy, qaPolicy, saveQaPolicy, policySaving, policySaving, policySaving, policySaving, debatePolicy, debatePolicy, debatePolicy, debatePolicy, debatePolicy, debatePolicy, debatePolicy, debatePolicy, saveDebatePolicy, schedulerPolicy, schedulerPolicy, schedulerPolicy, schedulerPolicy, saveSchedulerPolicy, realtimePolicy, realtimePolicy, saveRealtimePolicy, runtimeConfig, runtimeConfig, runtimeConfig, runtimeConfig, showOpenAIKey, showOpenAIKey, showOpenAIKey,];
+            [runtimeConfig, runtimeConfig, runtimeConfig, runtimeConfig, runtimeConfig, crawlerJobs, selectedJobLogs, selectedJobLogs, qaPolicy, qaPolicy, qaPolicy, qaPolicy, qaPolicy, qaPolicy, qaPolicy, qaPolicy, saveQaPolicy, policySaving, policySaving, policySaving, policySaving, debatePolicy, debatePolicy, debatePolicy, debatePolicy, debatePolicy, debatePolicy, debatePolicy, debatePolicy, saveDebatePolicy, schedulerPolicy, schedulerPolicy, schedulerPolicy, schedulerPolicy, saveSchedulerPolicy, realtimePolicy, realtimePolicy, saveRealtimePolicy, showOpenAIKey, showOpenAIKey, showOpenAIKey,];
         } },
     ...{ class: "secondary" },
     type: "button",
 });
 /** @type {__VLS_StyleScopedClasses['secondary']} */ ;
 (__VLS_ctx.showOpenAIKey ? "隐藏" : "显示");
+if (__VLS_ctx.runtimeConfig.llm_failover_mode === 'dual_fallback') {
+    __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+        placeholder: "https://api.example.com/v1",
+    });
+    (__VLS_ctx.runtimeConfig.openai_api_base_secondary);
+    __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+        placeholder: "gpt-5-mini",
+    });
+    (__VLS_ctx.runtimeConfig.llm_model_secondary);
+    __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+        type: "number",
+        min: "0",
+        max: "2",
+        step: "0.1",
+    });
+    (__VLS_ctx.runtimeConfig.llm_temperature_secondary);
+    __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+        ...{ class: "row" },
+        ...{ style: {} },
+    });
+    /** @type {__VLS_StyleScopedClasses['row']} */ ;
+    __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+        type: (__VLS_ctx.showSecondaryOpenAIKey ? 'text' : 'password'),
+        placeholder: "sk-...",
+        ...{ style: {} },
+    });
+    (__VLS_ctx.runtimeConfig.openai_api_key_secondary);
+    __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!(__VLS_ctx.runtimeConfig.llm_failover_mode === 'dual_fallback'))
+                    return;
+                __VLS_ctx.showSecondaryOpenAIKey = !__VLS_ctx.showSecondaryOpenAIKey;
+                // @ts-ignore
+                [runtimeConfig, runtimeConfig, runtimeConfig, runtimeConfig, runtimeConfig, showOpenAIKey, showSecondaryOpenAIKey, showSecondaryOpenAIKey, showSecondaryOpenAIKey,];
+            } },
+        ...{ class: "secondary" },
+        type: "button",
+    });
+    /** @type {__VLS_StyleScopedClasses['secondary']} */ ;
+    (__VLS_ctx.showSecondaryOpenAIKey ? "隐藏" : "显示");
+}
 __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "row" },
@@ -793,7 +922,7 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ onClick: (...[$event]) => {
             __VLS_ctx.showTavilyKey = !__VLS_ctx.showTavilyKey;
             // @ts-ignore
-            [runtimeConfig, showOpenAIKey, showTavilyKey, showTavilyKey, showTavilyKey,];
+            [runtimeConfig, showSecondaryOpenAIKey, showTavilyKey, showTavilyKey, showTavilyKey,];
         } },
     ...{ class: "secondary" },
     type: "button",
@@ -826,6 +955,86 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
     ...{ class: "section-title" },
 });
 /** @type {__VLS_StyleScopedClasses['section-title']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "row" },
+    ...{ style: {} },
+});
+/** @type {__VLS_StyleScopedClasses['row']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+    ...{ onClick: (__VLS_ctx.loadLlmAlerts) },
+    ...{ class: "secondary" },
+    disabled: (__VLS_ctx.llmAlertsLoading),
+});
+/** @type {__VLS_StyleScopedClasses['secondary']} */ ;
+(__VLS_ctx.llmAlertsLoading ? "加载中..." : "刷新告警");
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "table-wrap" },
+});
+/** @type {__VLS_StyleScopedClasses['table-wrap']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.table, __VLS_intrinsics.table)({
+    ...{ class: "table" },
+});
+/** @type {__VLS_StyleScopedClasses['table']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.thead, __VLS_intrinsics.thead)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.tr, __VLS_intrinsics.tr)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.tbody, __VLS_intrinsics.tbody)({});
+for (const [alert] of __VLS_vFor((__VLS_ctx.llmAlerts))) {
+    __VLS_asFunctionalElement1(__VLS_intrinsics.tr, __VLS_intrinsics.tr)({
+        key: (alert.id),
+    });
+    __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
+    (__VLS_ctx.formatDateTime(alert.at));
+    __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
+    (alert.scene);
+    __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
+    (alert.primary_model);
+    __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
+    (alert.secondary_model || "-");
+    __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
+    (alert.fallback_succeeded ? "成功" : "失败");
+    __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({
+        ...{ class: "mono" },
+    });
+    /** @type {__VLS_StyleScopedClasses['mono']} */ ;
+    (alert.primary_error);
+    __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+        ...{ onClick: (...[$event]) => {
+                __VLS_ctx.ackLlmAlert(alert.id);
+                // @ts-ignore
+                [loading, saveRuntimeConfig, configSaving, formatDateTime, showTavilyKey, loadRuntimeConfig, loadLlmAlerts, llmAlertsLoading, llmAlertsLoading, llmAlerts, ackLlmAlert,];
+            } },
+        ...{ class: "secondary" },
+        disabled: (!!alert.acknowledged),
+    });
+    /** @type {__VLS_StyleScopedClasses['secondary']} */ ;
+    (alert.acknowledged ? "已确认" : "确认");
+    // @ts-ignore
+    [];
+}
+if (__VLS_ctx.llmAlerts.length === 0) {
+    __VLS_asFunctionalElement1(__VLS_intrinsics.tr, __VLS_intrinsics.tr)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({
+        colspan: "7",
+        ...{ style: {} },
+    });
+}
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "panel col-12" },
+});
+/** @type {__VLS_StyleScopedClasses['panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-12']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+    ...{ class: "section-title" },
+});
+/** @type {__VLS_StyleScopedClasses['section-title']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.pre, __VLS_intrinsics.pre)({
     ...{ class: "panel-soft" },
     ...{ style: {} },
@@ -848,6 +1057,6 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.pre, __VLS_intrinsics.pre)({
 /** @type {__VLS_StyleScopedClasses['panel-soft']} */ ;
 (__VLS_ctx.output || "操作输出将显示在这里");
 // @ts-ignore
-[loading, showTavilyKey, saveRuntimeConfig, configSaving, loadRuntimeConfig, capacitySnapshot, capacitySnapshot, output,];
+[llmAlerts, capacitySnapshot, capacitySnapshot, output,];
 const __VLS_export = (await import('vue')).defineComponent({});
 export default {};

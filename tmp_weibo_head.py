@@ -28,7 +28,7 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8080")
 ARCHIVE_DIR = Path(os.getenv("ARCHIVE_DIR", "./hotspots_data"))
 
 # Cookie 配置
-WEIBO_COOKIE = os.getenv("WEIBO_COOKIE", "").strip()
+WEIBO_COOKIE = "SUB=_2AkMe07Z1f8NxqwFRmvEcyWzmbYl0ygnEieKoj0euJRMxHRl-yT9kqhEYtRB6NVOYmpJIE76iaCFiGdSeT0qRO2f1ZfZ0"  # 填入你的微博 Cookie
 
 # ==========================================
 # 工具函数
@@ -239,4 +239,3 @@ async def crawl_weibo_hotspots():
 
 if __name__ == "__main__":
     asyncio.run(crawl_weibo_hotspots())
-
