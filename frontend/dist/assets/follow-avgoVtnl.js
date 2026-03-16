@@ -1,0 +1,1 @@
+import{y as e}from"./index-DtChE4rq.js";function s(o){return e.post("/follow",o)}function n(o=4,t,l=20){return e.get("/follow/following",{params:{target_type:o,cursor:t,limit:l}})}function a(o,t=20){return e.get("/follow/followers",{params:{cursor:o,limit:t}})}export{a,s as e,n as g};
