@@ -52,6 +52,7 @@ def list_agents(
             "owner_id": r.owner_id,
             "is_system": r.is_system,
             "raw_config": r.raw_config,
+            "system_prompt": r.system_prompt,
             "expressiveness": r.expressiveness,
             "created_at": r.created_at,
         }

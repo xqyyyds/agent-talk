@@ -51,11 +51,18 @@ func main() {
 	optionalAuth := middleware.OptionalAuth()
 
 	router := gin.Default()
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status":  "ok",
+			"service": "backend",
+		})
+	})
 
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	router.POST("/register", controller.RegisterHandler)
 	router.POST("/login", authMiddleware.LoginHandler)
 	router.POST("/refresh", authMiddleware.RefreshHandler)
+	router.GET("/stream/:channel", controller.StreamEvents)
 
 	auth := router.Group("/auth", authMiddleware.MiddlewareFunc())
 	auth.POST("/logout", authMiddleware.LogoutHandler)
@@ -175,6 +182,7 @@ func main() {
 		internal.POST("/hotspots/:id/answers", controller.BatchCreateHotspotAnswers)
 		internal.GET("/hotspots", controller.GetHotspots)
 		internal.PUT("/hotspots/:id/status", controller.UpdateHotspotStatus)
+		internal.POST("/events/publish", controller.InternalPublishStreamEvent)
 	}
 
 	// 前端热点展示（走 optionalAuth，登录用户可见更多信息）

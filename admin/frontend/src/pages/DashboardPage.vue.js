@@ -1,6 +1,7 @@
 import * as echarts from "echarts";
 import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { api } from "../api";
+import { formatBeijingTime } from "../utils/datetime";
 const overview = ref(null);
 const charts = ref(null);
 const days = ref(7);
@@ -18,12 +19,10 @@ let rolePieChart = null;
 let pollingTimer = null;
 function formatError(err) {
     const detail = err?.response?.data?.detail;
-    if (typeof detail === "string") {
+    if (typeof detail === "string")
         return detail;
-    }
-    if (detail && typeof detail === "object") {
+    if (detail && typeof detail === "object")
         return JSON.stringify(detail, null, 2);
-    }
     return err?.message || "加载失败";
 }
 function trimOnlinePoints(max = 24) {
@@ -33,7 +32,7 @@ function trimOnlinePoints(max = 24) {
 }
 function pushOnlinePoint(value) {
     const now = new Date();
-    const label = now.toLocaleTimeString("zh-CN", { hour12: false });
+    const label = formatBeijingTime(now);
     onlinePoints.value.push({ label, value });
     trimOnlinePoints();
 }
@@ -66,6 +65,7 @@ function renderUserTrendChart() {
         },
         yAxis: {
             type: "value",
+            minInterval: 1,
             axisLabel: { color: "#8fa1c6" },
             splitLine: { lineStyle: { color: "#263652" } },
         },
@@ -197,20 +197,27 @@ async function loadCharts() {
     const { data } = await api.dashboardCharts(days.value);
     charts.value = data;
 }
+async function ensureAndRenderAfterDomReady() {
+    await nextTick();
+    ensureCharts();
+    renderAllCharts();
+}
 async function loadDashboardData() {
     loading.value = true;
     error.value = "";
+    let ok = false;
     try {
         await Promise.all([loadOverview(), loadCharts()]);
-        await nextTick();
-        ensureCharts();
-        renderAllCharts();
+        ok = true;
     }
     catch (err) {
         error.value = formatError(err);
     }
     finally {
         loading.value = false;
+    }
+    if (ok) {
+        await ensureAndRenderAfterDomReady();
     }
 }
 async function pollOverview() {
@@ -219,7 +226,7 @@ async function pollOverview() {
         renderOnlineTrendChart();
     }
     catch {
-        // Keep dashboard running even if one poll fails.
+        // keep dashboard polling alive
     }
 }
 function startPolling() {
@@ -238,9 +245,7 @@ function stopPolling() {
 watch(days, async () => {
     try {
         await loadCharts();
-        renderUserTrendChart();
-        renderContentTrendChart();
-        renderRolePieChart();
+        await ensureAndRenderAfterDomReady();
     }
     catch (err) {
         error.value = formatError(err);

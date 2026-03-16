@@ -13,10 +13,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// ============================================
-// 请求结构体
-// ============================================
-
 type HotspotInput struct {
 	Source      string `json:"source" binding:"required,oneof=zhihu weibo"`
 	SourceID    string `json:"source_id" binding:"required"`
@@ -25,7 +21,7 @@ type HotspotInput struct {
 	URL         string `json:"url"`
 	Rank        int    `json:"rank"`
 	Heat        string `json:"heat"`
-	HotspotDate string `json:"hotspot_date" binding:"required"` // "2026-03-05"
+	HotspotDate string `json:"hotspot_date" binding:"required"`
 }
 
 type BatchCreateHotspotsRequest struct {
@@ -51,12 +47,6 @@ type UpdateHotspotStatusRequest struct {
 	QuestionID *uint  `json:"question_id"`
 }
 
-// ============================================
-// 内部 API：爬虫写入
-// ============================================
-
-// BatchCreateHotspots 批量写入热点（知乎/微博通用）
-// 供爬虫调用，不走 JWT 认证
 func BatchCreateHotspots(c *gin.Context) {
 	var req BatchCreateHotspotsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -68,7 +58,6 @@ func BatchCreateHotspots(c *gin.Context) {
 	updated := 0
 
 	for _, input := range req.Hotspots {
-		// 解析日期
 		hotspotDate, err := time.Parse("2006-01-02", input.HotspotDate)
 		if err != nil {
 			hotspotDate = time.Now()
@@ -120,24 +109,29 @@ func BatchCreateHotspots(c *gin.Context) {
 
 	c.JSON(http.StatusOK, Response{
 		Code:    200,
-		Message: "成功写入 " + strconv.Itoa(inserted) + " 条热点，更新 " + strconv.Itoa(updated) + " 条热点",
-		Data:    gin.H{"inserted": inserted, "updated": updated},
+		Message: "ok",
+		Data: gin.H{
+			"inserted": inserted,
+			"updated":  updated,
+		},
+	})
+
+	publishStreamEvent("hotspots", "hotspots_upserted", gin.H{
+		"inserted": inserted,
+		"updated":  updated,
 	})
 }
 
-// BatchCreateHotspotAnswers 为知乎热点批量添加原始回答
-// 供爬虫调用，不走 JWT 认证
 func BatchCreateHotspotAnswers(c *gin.Context) {
 	hotspotID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, Response{Code: 400, Message: "无效的 hotspot_id"})
+		c.JSON(http.StatusBadRequest, Response{Code: 400, Message: "invalid hotspot id"})
 		return
 	}
 
-	// 确认热点存在
 	var hotspot model.Hotspot
 	if err := database.DB.First(&hotspot, hotspotID).Error; err != nil {
-		c.JSON(http.StatusNotFound, Response{Code: 404, Message: "热点不存在"})
+		c.JSON(http.StatusNotFound, Response{Code: 404, Message: "hotspot not found"})
 		return
 	}
 
@@ -180,21 +174,24 @@ func BatchCreateHotspotAnswers(c *gin.Context) {
 
 	c.JSON(http.StatusOK, Response{
 		Code:    200,
-		Message: "成功写入 " + strconv.Itoa(inserted) + " 条回答，跳过 " + strconv.Itoa(skipped) + " 条重复",
-		Data:    gin.H{"inserted": inserted, "skipped": skipped},
+		Message: "ok",
+		Data: gin.H{
+			"inserted": inserted,
+			"skipped":  skipped,
+		},
+	})
+
+	publishStreamEvent("hotspots", "hotspot_answers_upserted", gin.H{
+		"hotspot_id": hotspotID,
+		"inserted":   inserted,
+		"skipped":    skipped,
 	})
 }
 
-// ============================================
-// 内部 API：Agent Service 读取与更新
-// ============================================
-
-// GetHotspots 获取热点列表
-// 支持 source / status / date 筛选，供 Agent Service 使用
 func GetHotspots(c *gin.Context) {
-	source := c.Query("source") // "zhihu" | "weibo"
-	status := c.Query("status") // "pending" | "processing" | "completed" | "skipped"
-	date := c.Query("date")     // "2026-03-05"
+	source := c.Query("source")
+	status := c.Query("status")
+	date := c.Query("date")
 
 	query := database.DB.Model(&model.Hotspot{})
 
@@ -217,12 +214,10 @@ func GetHotspots(c *gin.Context) {
 	c.JSON(http.StatusOK, Response{Code: 200, Data: hotspots})
 }
 
-// UpdateHotspotStatus 更新热点处理状态
-// pending → processing → completed / skipped
 func UpdateHotspotStatus(c *gin.Context) {
 	hotspotID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, Response{Code: 400, Message: "无效的 hotspot_id"})
+		c.JSON(http.StatusBadRequest, Response{Code: 400, Message: "invalid hotspot id"})
 		return
 	}
 
@@ -233,7 +228,7 @@ func UpdateHotspotStatus(c *gin.Context) {
 	}
 
 	updates := map[string]interface{}{"status": req.Status}
-	if req.Status == "completed" || req.Status == "skipped" {
+	if req.Status == string(model.HotspotStatusCompleted) || req.Status == string(model.HotspotStatusSkipped) {
 		now := time.Now()
 		updates["processed_at"] = now
 	}
@@ -241,27 +236,25 @@ func UpdateHotspotStatus(c *gin.Context) {
 		updates["question_id"] = *req.QuestionID
 	}
 
-	result := database.DB.Model(&model.Hotspot{}).
-		Where("id = ?", hotspotID).
-		Updates(updates)
-
+	result := database.DB.Model(&model.Hotspot{}).Where("id = ?", hotspotID).Updates(updates)
 	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, Response{Code: 500, Message: result.Error.Error()})
 		return
 	}
 	if result.RowsAffected == 0 {
-		c.JSON(http.StatusNotFound, Response{Code: 404, Message: "热点不存在"})
+		c.JSON(http.StatusNotFound, Response{Code: 404, Message: "hotspot not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, Response{Code: 200, Message: "状态更新成功"})
+	c.JSON(http.StatusOK, Response{Code: 200, Message: "ok"})
+
+	publishStreamEvent("hotspots", "hotspot_status_updated", gin.H{
+		"hotspot_id":  hotspotID,
+		"status":      req.Status,
+		"question_id": req.QuestionID,
+	})
 }
 
-// ============================================
-// 前端展示 API（走 JWT 认证）
-// ============================================
-
-// GetHotspotDates 获取有数据的日期列表（前端期次导航用）
 func GetHotspotDates(c *gin.Context) {
 	source := c.Query("source")
 
@@ -279,7 +272,6 @@ func GetHotspotDates(c *gin.Context) {
 	c.JSON(http.StatusOK, Response{Code: 200, Data: dates})
 }
 
-// GetHotspotList 获取热点列表（分页，前端展示用）
 func GetHotspotList(c *gin.Context) {
 	source := c.Query("source")
 	dateStr := c.Query("date")
@@ -295,7 +287,6 @@ func GetHotspotList(c *gin.Context) {
 		pageSize = 20
 	}
 
-	// 默认返回今日热点
 	if dateStr == "" {
 		dateStr = time.Now().Format("2006-01-02")
 	}
@@ -325,11 +316,10 @@ func GetHotspotList(c *gin.Context) {
 	})
 }
 
-// GetHotspotDetail 获取热点详情 + 知乎原始回答
 func GetHotspotDetail(c *gin.Context) {
 	hotspotID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, Response{Code: 400, Message: "无效的 hotspot_id"})
+		c.JSON(http.StatusBadRequest, Response{Code: 400, Message: "invalid hotspot id"})
 		return
 	}
 
@@ -337,7 +327,7 @@ func GetHotspotDetail(c *gin.Context) {
 	if err := database.DB.Preload("Answers", func(db *gorm.DB) *gorm.DB {
 		return db.Where("deleted_at IS NULL").Order("rank ASC")
 	}).First(&hotspot, hotspotID).Error; err != nil {
-		c.JSON(http.StatusNotFound, Response{Code: 404, Message: "热点不存在"})
+		c.JSON(http.StatusNotFound, Response{Code: 404, Message: "hotspot not found"})
 		return
 	}
 

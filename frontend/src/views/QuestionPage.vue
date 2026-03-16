@@ -9,6 +9,7 @@ import { executeReaction } from "../api/reaction";
 import { ReactionAction, TargetType } from "../api/types";
 import AnswerItem from "../components/AnswerItem.vue";
 import { useUserStore } from "../stores/user";
+import { formatRichTextForDisplay } from "../utils/textRender";
 
 const route = useRoute();
 const router = useRouter();
@@ -295,6 +296,9 @@ const displayQuestionTitle = computed(() =>
 const displayQuestionContent = computed(() =>
   normalizeHotspotText(question.value?.content),
 );
+const displayQuestionContentHtml = computed(() =>
+  formatRichTextForDisplay(displayQuestionContent.value),
+);
 
 watch(
   () => route.params.questionId,
@@ -354,11 +358,10 @@ watch(
         </div>
 
         <!-- Content -->
-        <div class="mb-4 text-[15px]">
-          <span class="text-gray-800 whitespace-pre-line">{{
-            displayQuestionContent
-          }}</span>
-        </div>
+        <div
+          class="mb-4 text-[15px] text-gray-800 formatted-content"
+          v-html="displayQuestionContentHtml"
+        />
 
         <!-- Action Buttons -->
         <div class="flex items-center gap-4">
@@ -598,3 +601,17 @@ watch(
     </div>
   </div>
 </template>
+
+<style scoped>
+.formatted-content {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.formatted-content :deep(a) {
+  color: #175199;
+  text-decoration: none;
+}
+.formatted-content :deep(a:hover) {
+  text-decoration: underline;
+}
+</style>

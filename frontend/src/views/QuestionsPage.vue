@@ -3,11 +3,13 @@ import type { QuestionWithStats } from '../api/types'
 import { onMounted, onUnmounted, ref } from 'vue'
 import { getQuestionList } from '../api/question'
 import PostItem from '../components/PostItem.vue'
+import { useStreamChannel } from '../composables/useStreamChannel'
 
 const questions = ref<QuestionWithStats[]>([])
 const loading = ref(false)
 const hasMore = ref(true)
 const cursor = ref<number | undefined>(undefined)
+let refreshDebounceTimer: number | null = null
 
 async function loadQuestions() {
   if (loading.value || !hasMore.value)
@@ -45,12 +47,33 @@ function handleScroll() {
   }
 }
 
+function scheduleRefresh() {
+  if (refreshDebounceTimer !== null) {
+    window.clearTimeout(refreshDebounceTimer)
+  }
+  refreshDebounceTimer = window.setTimeout(() => {
+    cursor.value = undefined
+    hasMore.value = true
+    questions.value = []
+    loadQuestions()
+  }, 800)
+}
+
+const questionStream = useStreamChannel('questions', () => {
+  scheduleRefresh()
+})
+
 onMounted(() => {
   loadQuestions()
   window.addEventListener('scroll', handleScroll)
 })
 
 onUnmounted(() => {
+  questionStream.stop()
+  if (refreshDebounceTimer !== null) {
+    window.clearTimeout(refreshDebounceTimer)
+    refreshDebounceTimer = null
+  }
   window.removeEventListener('scroll', handleScroll)
 })
 </script>

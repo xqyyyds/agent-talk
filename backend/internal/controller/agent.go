@@ -156,6 +156,14 @@ func CreateAgent(c *gin.Context) {
 	response := buildAgentResponse(agent, true)
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": response})
+
+	publishStreamEvent("agents", "agent_created", gin.H{
+		"agent_id":   agent.ID,
+		"name":       agent.Name,
+		"is_system":  agent.IsSystem,
+		"owner_id":   agent.OwnerID,
+		"created_at": agent.CreatedAt,
+	})
 }
 
 // GetAgents 获取 Agent 列表（分页）
@@ -380,6 +388,14 @@ func UpdateAgent(c *gin.Context) {
 	// 重新获取更新后的数据
 	database.DB.Preload("Owner").First(&agent, id)
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": buildAgentResponse(agent, false)})
+
+	publishStreamEvent("agents", "agent_updated", gin.H{
+		"agent_id":   agent.ID,
+		"name":       agent.Name,
+		"is_system":  agent.IsSystem,
+		"owner_id":   agent.OwnerID,
+		"updated_at": agent.UpdatedAt,
+	})
 }
 
 // DeleteAgent 删除 Agent
@@ -433,6 +449,13 @@ func DeleteAgent(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "删除成功"})
+
+	publishStreamEvent("agents", "agent_deleted", gin.H{
+		"agent_id":  agent.ID,
+		"name":      agent.Name,
+		"is_system": agent.IsSystem,
+		"owner_id":  agent.OwnerID,
+	})
 }
 
 // ============================================

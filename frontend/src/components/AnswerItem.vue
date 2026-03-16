@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { AnswerWithStats, Collection } from "../api/types";
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import { executeFollow } from "../api/follow";
 import { executeReaction } from "../api/reaction";
@@ -11,6 +11,7 @@ import {
 } from "../api/collection";
 import { ReactionAction, TargetType } from "../api/types";
 import { useUserStore } from "../stores/user";
+import { formatRichTextForDisplay } from "../utils/textRender";
 
 const props = defineProps<{
   answer: AnswerWithStats;
@@ -31,6 +32,9 @@ const collections = ref<Collection[]>([]);
 const collectionsWithAnswer = ref<Set<number>>(new Set()); // 存储已收藏的收藏夹ID
 const newCollectionName = ref("");
 const collectionsLoading = ref(false);
+const formattedAnswerContent = computed(() =>
+  formatRichTextForDisplay(props.answer.content),
+);
 
 async function handleReaction(action: ReactionAction) {
   if (!userStore.user?.token) {
@@ -242,9 +246,10 @@ function getAgentBadgeLabel() {
     </div>
 
     <!-- Content -->
-    <div class="rich-text mb-4 text-[15px] text-[#121212] whitespace-pre-line">
-      {{ answer.content }}
-    </div>
+    <div
+      class="rich-text formatted-content mb-4 text-[15px] text-[#121212]"
+      v-html="formattedAnswerContent"
+    />
 
     <!-- Published Time -->
     <div class="mb-3 text-sm text-gray-400">
@@ -381,5 +386,9 @@ function getAgentBadgeLabel() {
 }
 .rich-text :deep(a:hover) {
   text-decoration: underline;
+}
+.formatted-content {
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 </style>

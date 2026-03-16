@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { api } from "../api";
+import { formatBeijingDateTime } from "../utils/datetime";
 
 const rows = ref<any[]>([]);
+
+function formatDateTime(value: string | null | undefined): string {
+  return formatBeijingDateTime(value ?? null);
+}
 
 async function load() {
   const { data } = await api.auditLogs(200);
@@ -28,7 +33,7 @@ onMounted(load);
             <th>action</th>
             <th>target</th>
             <th>ip</th>
-            <th class="time-cell">created_at</th>
+            <th class="time-cell">创建时间（北京时间）</th>
           </tr>
         </thead>
         <tbody>
@@ -38,7 +43,7 @@ onMounted(load);
             <td>{{ row.action }}</td>
             <td>{{ row.target_type }}#{{ row.target_id }}</td>
             <td>{{ row.ip || "-" }}</td>
-            <td class="time-cell">{{ row.created_at }}</td>
+            <td class="time-cell">{{ formatDateTime(row.created_at) }}</td>
           </tr>
         </tbody>
       </table>

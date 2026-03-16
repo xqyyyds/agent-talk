@@ -1,23 +1,56 @@
-import { onMounted, onUnmounted, ref } from "vue";
+import { onMounted, onUnmounted, reactive, ref } from "vue";
 import { api } from "../api";
-const debateStatus = ref(null);
-const output = ref("");
-const cycleCount = ref(1);
+import { formatBeijingDateTime } from "../utils/datetime";
 const loading = ref(false);
+const output = ref("");
+const debateStatus = ref(null);
+const cycleCount = ref(1);
 const crawlerLoadingSource = ref(null);
 const crawlerJobs = ref([]);
 const selectedJobId = ref("");
 const selectedJobLogs = ref([]);
+const notifiedFailedJobs = new Set();
 const configSaving = ref(false);
 const showOpenAIKey = ref(false);
 const showTavilyKey = ref(false);
-const runtimeConfig = ref({
+const runtimeConfig = reactive({
     openai_api_base: "",
     openai_api_key: "",
     llm_model: "",
     llm_temperature: 0.7,
     tavily_api_key: "",
 });
+const qaPolicy = reactive({
+    enabled: true,
+    target_daily_hotspots: 480,
+    dispatch_min_seconds: 10,
+    dispatch_max_seconds: 180,
+    jitter_min: 0.85,
+    jitter_max: 1.15,
+    max_parallelism: 2,
+    ewma_alpha: 0.25,
+});
+const debatePolicy = reactive({
+    enabled: true,
+    daily_target_min: 10,
+    daily_target_max: 15,
+    interval_min_minutes: 45,
+    interval_max_minutes: 180,
+    jitter_min: 0.85,
+    jitter_max: 1.15,
+    new_agent_auto_join: true,
+});
+const schedulerPolicy = reactive({
+    auto_crawler_enabled: true,
+    auto_crawler_interval_minutes: 120,
+    sources: ["zhihu", "weibo"],
+});
+const realtimePolicy = reactive({
+    sse_enabled: true,
+    fallback_poll_seconds: 5,
+});
+const capacitySnapshot = ref(null);
+const policySaving = ref(false);
 let crawlerPollTimer = null;
 function normalizeError(err) {
     const detail = err?.response?.data?.detail;
@@ -33,26 +66,16 @@ function isRunningStatus(status) {
 function isSourceRunning(source) {
     return crawlerJobs.value.some((job) => job.source === source && isRunningStatus(job.status));
 }
-function startCrawlerPolling() {
-    if (crawlerPollTimer !== null)
-        return;
-    crawlerPollTimer = window.setInterval(() => {
-        void loadCrawlerJobs(true);
-    }, 2000);
-}
-function stopCrawlerPolling() {
-    if (crawlerPollTimer !== null) {
-        window.clearInterval(crawlerPollTimer);
-        crawlerPollTimer = null;
-    }
-}
 function syncCrawlerPolling() {
     const hasRunningJob = crawlerJobs.value.some((job) => isRunningStatus(job.status));
-    if (hasRunningJob) {
-        startCrawlerPolling();
+    if (hasRunningJob && crawlerPollTimer === null) {
+        crawlerPollTimer = window.setInterval(() => {
+            void loadCrawlerJobs(true);
+        }, 2000);
     }
-    else {
-        stopCrawlerPolling();
+    if (!hasRunningJob && crawlerPollTimer !== null) {
+        window.clearInterval(crawlerPollTimer);
+        crawlerPollTimer = null;
     }
 }
 async function runAction(action) {
@@ -63,7 +86,7 @@ async function runAction(action) {
         return data;
     }
     catch (err) {
-        output.value = `执行失败:\n${normalizeError(err)}`;
+        output.value = `执行失败：\n${normalizeError(err)}`;
         return null;
     }
     finally {
@@ -94,7 +117,16 @@ async function loadCrawlerJobLogs(jobId) {
         selectedJobLogs.value = data?.data?.logs || [];
     }
     catch (err) {
-        selectedJobLogs.value = [`日志加载失败: ${normalizeError(err)}`];
+        selectedJobLogs.value = [`日志加载失败：${normalizeError(err)}`];
+    }
+}
+function checkCrawlerFailures() {
+    for (const job of crawlerJobs.value) {
+        if ((job.status === "failed" || job.status === "timeout") && !notifiedFailedJobs.has(job.job_id)) {
+            notifiedFailedJobs.add(job.job_id);
+            const reason = job.error_message || "crawler failed";
+            window.alert(`${job.source === "zhihu" ? "知乎" : "微博"} 爬虫任务失败（${statusLabel(job.status)}）。\n原因：${reason}\n请在后台更新 Cookie 后重试。`);
+        }
     }
 }
 async function loadCrawlerJobs(silent = false) {
@@ -107,11 +139,12 @@ async function loadCrawlerJobs(silent = false) {
         if (selectedJobId.value) {
             await loadCrawlerJobLogs(selectedJobId.value);
         }
+        checkCrawlerFailures();
         syncCrawlerPolling();
     }
     catch (err) {
         if (!silent) {
-            output.value = `拉取任务失败:\n${normalizeError(err)}`;
+            output.value = `加载爬虫任务失败：\n${normalizeError(err)}`;
         }
     }
 }
@@ -127,7 +160,7 @@ async function triggerCrawler(source) {
         await loadCrawlerJobs(true);
     }
     catch (err) {
-        output.value = `执行失败:\n${normalizeError(err)}`;
+        output.value = `执行失败：\n${normalizeError(err)}`;
         await loadCrawlerJobs(true);
     }
     finally {
@@ -148,17 +181,18 @@ function statusLabel(status) {
     };
     return map[status] || status;
 }
+function formatDateTime(value) {
+    return formatBeijingDateTime(value ?? null);
+}
 async function loadRuntimeConfig() {
     await runAction(async () => {
         const { data } = await api.getRuntimeConfig();
         const cfg = data?.data || {};
-        runtimeConfig.value = {
-            openai_api_base: cfg.openai_api_base || "",
-            openai_api_key: cfg.openai_api_key || "",
-            llm_model: cfg.llm_model || "",
-            llm_temperature: Number(cfg.llm_temperature ?? 0.7),
-            tavily_api_key: cfg.tavily_api_key || "",
-        };
+        runtimeConfig.openai_api_base = cfg.openai_api_base || "";
+        runtimeConfig.openai_api_key = cfg.openai_api_key || "";
+        runtimeConfig.llm_model = cfg.llm_model || "";
+        runtimeConfig.llm_temperature = Number(cfg.llm_temperature ?? 0.7);
+        runtimeConfig.tavily_api_key = cfg.tavily_api_key || "";
         return data;
     });
 }
@@ -166,27 +200,110 @@ async function saveRuntimeConfig() {
     configSaving.value = true;
     try {
         const payload = {
-            openai_api_base: runtimeConfig.value.openai_api_base,
-            openai_api_key: runtimeConfig.value.openai_api_key,
-            llm_model: runtimeConfig.value.llm_model,
-            llm_temperature: Number(runtimeConfig.value.llm_temperature),
-            tavily_api_key: runtimeConfig.value.tavily_api_key,
+            openai_api_base: runtimeConfig.openai_api_base,
+            openai_api_key: runtimeConfig.openai_api_key,
+            llm_model: runtimeConfig.llm_model,
+            llm_temperature: Number(runtimeConfig.llm_temperature),
+            tavily_api_key: runtimeConfig.tavily_api_key,
         };
         const { data } = await api.updateRuntimeConfig(payload);
         output.value = JSON.stringify(data, null, 2);
     }
     catch (err) {
-        output.value = `保存失败:\n${normalizeError(err)}`;
+        output.value = `保存失败：\n${normalizeError(err)}`;
     }
     finally {
         configSaving.value = false;
     }
 }
+async function loadPolicies() {
+    try {
+        const [qaRes, debateRes, schedulerRes, realtimeRes, capacityRes] = await Promise.all([
+            api.getQaPolicy(),
+            api.getDebatePolicy(),
+            api.getSchedulerPolicy(),
+            api.getRealtimePolicy(),
+            api.getRuntimeCapacity(),
+        ]);
+        Object.assign(qaPolicy, qaRes.data?.data || {});
+        Object.assign(debatePolicy, debateRes.data?.data || {});
+        Object.assign(schedulerPolicy, schedulerRes.data?.data || {});
+        Object.assign(realtimePolicy, realtimeRes.data?.data || {});
+        capacitySnapshot.value = capacityRes.data?.data || null;
+    }
+    catch (err) {
+        output.value = `加载策略失败：\n${normalizeError(err)}`;
+    }
+}
+async function saveQaPolicy() {
+    policySaving.value = true;
+    try {
+        await api.updateQaPolicy({ ...qaPolicy });
+        await loadPolicies();
+        output.value = "问答策略已更新";
+    }
+    catch (err) {
+        output.value = `保存问答策略失败：\n${normalizeError(err)}`;
+    }
+    finally {
+        policySaving.value = false;
+    }
+}
+async function saveDebatePolicy() {
+    policySaving.value = true;
+    try {
+        await api.updateDebatePolicy({ ...debatePolicy });
+        await loadPolicies();
+        output.value = "辩论策略已更新";
+    }
+    catch (err) {
+        output.value = `保存辩论策略失败：\n${normalizeError(err)}`;
+    }
+    finally {
+        policySaving.value = false;
+    }
+}
+async function saveSchedulerPolicy() {
+    policySaving.value = true;
+    try {
+        await api.updateSchedulerPolicy({ ...schedulerPolicy });
+        await loadPolicies();
+        output.value = "调度策略已更新";
+    }
+    catch (err) {
+        output.value = `保存调度策略失败：\n${normalizeError(err)}`;
+    }
+    finally {
+        policySaving.value = false;
+    }
+}
+async function saveRealtimePolicy() {
+    policySaving.value = true;
+    try {
+        await api.updateRealtimePolicy({ ...realtimePolicy });
+        await loadPolicies();
+        output.value = "实时策略已更新";
+    }
+    catch (err) {
+        output.value = `保存实时策略失败：\n${normalizeError(err)}`;
+    }
+    finally {
+        policySaving.value = false;
+    }
+}
 onMounted(async () => {
-    await Promise.all([refreshDebateStatus(), loadRuntimeConfig(), loadCrawlerJobs()]);
+    await Promise.all([
+        refreshDebateStatus(),
+        loadRuntimeConfig(),
+        loadCrawlerJobs(),
+        loadPolicies(),
+    ]);
 });
 onUnmounted(() => {
-    stopCrawlerPolling();
+    if (crawlerPollTimer !== null) {
+        window.clearInterval(crawlerPollTimer);
+        crawlerPollTimer = null;
+    }
 });
 const __VLS_ctx = {
     ...{},
@@ -268,11 +385,7 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     disabled: (__VLS_ctx.crawlerLoadingSource !== null || __VLS_ctx.isSourceRunning('zhihu')),
 });
 /** @type {__VLS_StyleScopedClasses['primary']} */ ;
-(__VLS_ctx.isSourceRunning("zhihu")
-    ? "知乎任务运行中"
-    : __VLS_ctx.crawlerLoadingSource === "zhihu"
-        ? "触发中..."
-        : "触发知乎爬虫");
+(__VLS_ctx.isSourceRunning("zhihu") ? "知乎运行中" : __VLS_ctx.crawlerLoadingSource === "zhihu" ? "启动中..." : "运行知乎爬虫");
 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ onClick: (...[$event]) => {
             __VLS_ctx.triggerCrawler('weibo');
@@ -283,11 +396,7 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     disabled: (__VLS_ctx.crawlerLoadingSource !== null || __VLS_ctx.isSourceRunning('weibo')),
 });
 /** @type {__VLS_StyleScopedClasses['secondary']} */ ;
-(__VLS_ctx.isSourceRunning("weibo")
-    ? "微博任务运行中"
-    : __VLS_ctx.crawlerLoadingSource === "weibo"
-        ? "触发中..."
-        : "触发微博爬虫");
+(__VLS_ctx.isSourceRunning("weibo") ? "微博运行中" : __VLS_ctx.crawlerLoadingSource === "weibo" ? "启动中..." : "运行微博爬虫");
 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ onClick: (...[$event]) => {
             __VLS_ctx.loadCrawlerJobs();
@@ -339,13 +448,13 @@ for (const [job] of __VLS_vFor((__VLS_ctx.crawlerJobs))) {
     __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
     (job.duration_seconds ?? "-");
     __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
-    (job.finished_at || "-");
+    (__VLS_ctx.formatDateTime(job.finished_at));
     __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
     __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
         ...{ onClick: (...[$event]) => {
                 __VLS_ctx.selectJob(job.job_id);
                 // @ts-ignore
-                [crawlerJobs, statusLabel, selectJob,];
+                [crawlerJobs, statusLabel, formatDateTime, selectJob,];
             } },
         ...{ class: "secondary" },
     });
@@ -365,7 +474,255 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.pre, __VLS_intrinsics.pre)({
     ...{ style: {} },
 });
 /** @type {__VLS_StyleScopedClasses['panel-soft']} */ ;
-(__VLS_ctx.selectedJobLogs.length ? __VLS_ctx.selectedJobLogs.join("\n") : "选择任务后可查看日志");
+(__VLS_ctx.selectedJobLogs.length ? __VLS_ctx.selectedJobLogs.join("\n") : "请选择任务查看日志");
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "panel col-6" },
+});
+/** @type {__VLS_StyleScopedClasses['panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-6']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+    ...{ class: "section-title" },
+});
+/** @type {__VLS_StyleScopedClasses['section-title']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "stack" },
+});
+/** @type {__VLS_StyleScopedClasses['stack']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "checkbox",
+});
+(__VLS_ctx.qaPolicy.enabled);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "number",
+    min: "1",
+    max: "5000",
+});
+(__VLS_ctx.qaPolicy.target_daily_hotspots);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "number",
+    min: "1",
+    max: "600",
+});
+(__VLS_ctx.qaPolicy.dispatch_min_seconds);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "number",
+    min: "1",
+    max: "1800",
+});
+(__VLS_ctx.qaPolicy.dispatch_max_seconds);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "number",
+    min: "0.5",
+    max: "1",
+    step: "0.01",
+});
+(__VLS_ctx.qaPolicy.jitter_min);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "number",
+    min: "1",
+    max: "2",
+    step: "0.01",
+});
+(__VLS_ctx.qaPolicy.jitter_max);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "number",
+    min: "1",
+    max: "8",
+});
+(__VLS_ctx.qaPolicy.max_parallelism);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "number",
+    min: "0.05",
+    max: "0.95",
+    step: "0.01",
+});
+(__VLS_ctx.qaPolicy.ewma_alpha);
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "row" },
+    ...{ style: {} },
+});
+/** @type {__VLS_StyleScopedClasses['row']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+    ...{ onClick: (__VLS_ctx.saveQaPolicy) },
+    ...{ class: "primary" },
+    disabled: (__VLS_ctx.policySaving),
+});
+/** @type {__VLS_StyleScopedClasses['primary']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "panel col-6" },
+});
+/** @type {__VLS_StyleScopedClasses['panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-6']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+    ...{ class: "section-title" },
+});
+/** @type {__VLS_StyleScopedClasses['section-title']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "stack" },
+});
+/** @type {__VLS_StyleScopedClasses['stack']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "checkbox",
+});
+(__VLS_ctx.debatePolicy.enabled);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "number",
+    min: "1",
+    max: "100",
+});
+(__VLS_ctx.debatePolicy.daily_target_min);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "number",
+    min: "1",
+    max: "200",
+});
+(__VLS_ctx.debatePolicy.daily_target_max);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "number",
+    min: "1",
+    max: "1440",
+});
+(__VLS_ctx.debatePolicy.interval_min_minutes);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "number",
+    min: "1",
+    max: "1440",
+});
+(__VLS_ctx.debatePolicy.interval_max_minutes);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "number",
+    min: "0.5",
+    max: "1",
+    step: "0.01",
+});
+(__VLS_ctx.debatePolicy.jitter_min);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "number",
+    min: "1",
+    max: "2",
+    step: "0.01",
+});
+(__VLS_ctx.debatePolicy.jitter_max);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "checkbox",
+});
+(__VLS_ctx.debatePolicy.new_agent_auto_join);
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "row" },
+    ...{ style: {} },
+});
+/** @type {__VLS_StyleScopedClasses['row']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+    ...{ onClick: (__VLS_ctx.saveDebatePolicy) },
+    ...{ class: "primary" },
+    disabled: (__VLS_ctx.policySaving),
+});
+/** @type {__VLS_StyleScopedClasses['primary']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "panel col-6" },
+});
+/** @type {__VLS_StyleScopedClasses['panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-6']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+    ...{ class: "section-title" },
+});
+/** @type {__VLS_StyleScopedClasses['section-title']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "stack" },
+});
+/** @type {__VLS_StyleScopedClasses['stack']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "checkbox",
+});
+(__VLS_ctx.schedulerPolicy.auto_crawler_enabled);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "number",
+    min: "10",
+    max: "1440",
+});
+(__VLS_ctx.schedulerPolicy.auto_crawler_interval_minutes);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "row" },
+});
+/** @type {__VLS_StyleScopedClasses['row']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "checkbox",
+    value: "zhihu",
+});
+(__VLS_ctx.schedulerPolicy.sources);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "checkbox",
+    value: "weibo",
+});
+(__VLS_ctx.schedulerPolicy.sources);
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "row" },
+    ...{ style: {} },
+});
+/** @type {__VLS_StyleScopedClasses['row']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+    ...{ onClick: (__VLS_ctx.saveSchedulerPolicy) },
+    ...{ class: "primary" },
+    disabled: (__VLS_ctx.policySaving),
+});
+/** @type {__VLS_StyleScopedClasses['primary']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "panel col-6" },
+});
+/** @type {__VLS_StyleScopedClasses['panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-6']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+    ...{ class: "section-title" },
+});
+/** @type {__VLS_StyleScopedClasses['section-title']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "stack" },
+});
+/** @type {__VLS_StyleScopedClasses['stack']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "checkbox",
+});
+(__VLS_ctx.realtimePolicy.sse_enabled);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "number",
+    min: "1",
+    max: "120",
+});
+(__VLS_ctx.realtimePolicy.fallback_poll_seconds);
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "row" },
+    ...{ style: {} },
+});
+/** @type {__VLS_StyleScopedClasses['row']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+    ...{ onClick: (__VLS_ctx.saveRealtimePolicy) },
+    ...{ class: "primary" },
+    disabled: (__VLS_ctx.policySaving),
+});
+/** @type {__VLS_StyleScopedClasses['primary']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "panel col-12" },
 });
@@ -373,7 +730,6 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
 /** @type {__VLS_StyleScopedClasses['col-12']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
     ...{ class: "section-title" },
-    ...{ style: {} },
 });
 /** @type {__VLS_StyleScopedClasses['section-title']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
@@ -387,7 +743,7 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
 (__VLS_ctx.runtimeConfig.openai_api_base);
 __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
-    placeholder: "gpt-4o-mini",
+    placeholder: "gpt-5-mini",
 });
 (__VLS_ctx.runtimeConfig.llm_model);
 __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
@@ -396,7 +752,6 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
     min: "0",
     max: "2",
     step: "0.1",
-    placeholder: "0.7",
 });
 (__VLS_ctx.runtimeConfig.llm_temperature);
 __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
@@ -415,7 +770,7 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ onClick: (...[$event]) => {
             __VLS_ctx.showOpenAIKey = !__VLS_ctx.showOpenAIKey;
             // @ts-ignore
-            [crawlerJobs, selectedJobLogs, selectedJobLogs, runtimeConfig, runtimeConfig, runtimeConfig, runtimeConfig, showOpenAIKey, showOpenAIKey, showOpenAIKey,];
+            [crawlerJobs, selectedJobLogs, selectedJobLogs, qaPolicy, qaPolicy, qaPolicy, qaPolicy, qaPolicy, qaPolicy, qaPolicy, qaPolicy, saveQaPolicy, policySaving, policySaving, policySaving, policySaving, debatePolicy, debatePolicy, debatePolicy, debatePolicy, debatePolicy, debatePolicy, debatePolicy, debatePolicy, saveDebatePolicy, schedulerPolicy, schedulerPolicy, schedulerPolicy, schedulerPolicy, saveSchedulerPolicy, realtimePolicy, realtimePolicy, saveRealtimePolicy, runtimeConfig, runtimeConfig, runtimeConfig, runtimeConfig, showOpenAIKey, showOpenAIKey, showOpenAIKey,];
         } },
     ...{ class: "secondary" },
     type: "button",
@@ -462,13 +817,37 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     disabled: (__VLS_ctx.loading),
 });
 /** @type {__VLS_StyleScopedClasses['secondary']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "panel col-12" },
+});
+/** @type {__VLS_StyleScopedClasses['panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-12']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+    ...{ class: "section-title" },
+});
+/** @type {__VLS_StyleScopedClasses['section-title']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.pre, __VLS_intrinsics.pre)({
     ...{ class: "panel-soft" },
     ...{ style: {} },
 });
 /** @type {__VLS_StyleScopedClasses['panel-soft']} */ ;
-(__VLS_ctx.output || "执行结果会显示在这里");
+(__VLS_ctx.capacitySnapshot ? JSON.stringify(__VLS_ctx.capacitySnapshot, null, 2) : "暂无容量数据");
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "panel col-12" },
+});
+/** @type {__VLS_StyleScopedClasses['panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-12']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+    ...{ class: "section-title" },
+});
+/** @type {__VLS_StyleScopedClasses['section-title']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.pre, __VLS_intrinsics.pre)({
+    ...{ class: "panel-soft" },
+    ...{ style: {} },
+});
+/** @type {__VLS_StyleScopedClasses['panel-soft']} */ ;
+(__VLS_ctx.output || "操作输出将显示在这里");
 // @ts-ignore
-[loading, showTavilyKey, saveRuntimeConfig, configSaving, loadRuntimeConfig, output,];
+[loading, showTavilyKey, saveRuntimeConfig, configSaving, loadRuntimeConfig, capacitySnapshot, capacitySnapshot, output,];
 const __VLS_export = (await import('vue')).defineComponent({});
 export default {};

@@ -62,6 +62,21 @@ export const api = {
   getRuntimeConfig: () => http.get("/admin/ops/runtime-config"),
   updateRuntimeConfig: (payload: any) =>
     http.put("/admin/ops/runtime-config", payload),
+  getQaPolicy: () => http.get("/admin/ops/runtime/qa-policy"),
+  updateQaPolicy: (payload: any) =>
+    http.put("/admin/ops/runtime/qa-policy", payload),
+  getDebatePolicy: () => http.get("/admin/ops/runtime/debate-policy"),
+  updateDebatePolicy: (payload: any) =>
+    http.put("/admin/ops/runtime/debate-policy", payload),
+  getSchedulerPolicy: () => http.get("/admin/ops/runtime/scheduler-policy"),
+  updateSchedulerPolicy: (payload: any) =>
+    http.put("/admin/ops/runtime/scheduler-policy", payload),
+  getRealtimePolicy: () => http.get("/admin/ops/runtime/realtime-policy"),
+  updateRealtimePolicy: (payload: any) =>
+    http.put("/admin/ops/runtime/realtime-policy", payload),
+  getRuntimeCapacity: () => http.get("/admin/ops/runtime/capacity"),
+  streamUrl: (channel: "hotspots" | "questions" | "debates" | "agents" | "online") =>
+    `/api/admin/stream/${channel}`,
 
   auditLogs: (limit = 100) =>
     http.get("/admin/ops/audit/logs", { params: { limit } }),

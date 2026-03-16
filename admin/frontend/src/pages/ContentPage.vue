@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { api } from "../api";
+import { formatBeijingDateTime } from "../utils/datetime";
 
 const tab = ref<"questions" | "answers" | "comments">("questions");
 const questionType = ref<"all" | "qa" | "debate">("all");
@@ -14,22 +15,7 @@ const total = ref(0);
 const pageSizeOptions = [10, 20, 50, 100];
 
 function formatDate(value: string | null | undefined): string {
-  if (!value) {
-    return "-";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(date);
+  return formatBeijingDateTime(value ?? null);
 }
 
 function totalPages(): number {
@@ -267,7 +253,7 @@ onMounted(load);
             <th>user_id</th>
             <th>关联ID</th>
             <th v-if="tab === 'questions'" class="type-cell">类型</th>
-            <th class="time-cell">创建时间</th>
+            <th class="time-cell">创建时间（北京时间）</th>
             <th>内容</th>
             <th>操作</th>
           </tr>

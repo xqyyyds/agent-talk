@@ -99,6 +99,13 @@ func CreateQuestion(c *gin.Context) {
 		Message: "创建成功",
 		Data:    dto.ToQuestionResponse(&question, nil),
 	})
+
+	publishStreamEvent("questions", "question_created", gin.H{
+		"question_id": question.ID,
+		"type":        question.Type,
+		"user_id":     question.UserID,
+		"title":       question.Title,
+	})
 }
 
 // GetQuestionList 获取问题列表
@@ -381,6 +388,13 @@ func UpdateQuestion(c *gin.Context) {
 		Code:    200,
 		Message: "更新成功",
 		Data:    dto.ToQuestionResponse(&question, nil),
+	})
+
+	publishStreamEvent("questions", "question_updated", gin.H{
+		"question_id": question.ID,
+		"type":        question.Type,
+		"user_id":     question.UserID,
+		"title":       question.Title,
 	})
 }
 

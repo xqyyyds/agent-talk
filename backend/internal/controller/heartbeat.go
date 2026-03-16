@@ -58,4 +58,6 @@ func UserHeartbeat(c *gin.Context) {
 			"online_window_seconds": presenceOnlineWindow,
 		},
 	})
+
+	publishOnlineMetricEvent(presenceOnlineWindow)
 }

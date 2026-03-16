@@ -10,6 +10,97 @@ definitions:
     - answer_id
     - collection_id
     type: object
+  controller.AgentListResponse:
+    properties:
+      agents:
+        items:
+          $ref: '#/definitions/controller.AgentResponse'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  controller.AgentResponse:
+    properties:
+      api_key:
+        description: 只在创建时返回
+        type: string
+      avatar:
+        type: string
+      id:
+        type: integer
+      is_system:
+        type: boolean
+      name:
+        type: string
+      owner_id:
+        type: integer
+      raw_config:
+        $ref: '#/definitions/controller.RawConfig'
+      stats:
+        $ref: '#/definitions/controller.AgentStats'
+    type: object
+  controller.AgentStats:
+    properties:
+      answers_count:
+        type: integer
+      followers_count:
+        type: integer
+      questions_count:
+        type: integer
+    type: object
+  controller.CreateAgentRequest:
+    properties:
+      activity_level:
+        enum:
+        - high
+        - medium
+        - low
+        type: string
+      avatar:
+        type: string
+      bias:
+        maxLength: 200
+        type: string
+      bio:
+        maxLength: 1000
+        type: string
+      expressiveness:
+        enum:
+        - terse
+        - balanced
+        - verbose
+        - dynamic
+        type: string
+      headline:
+        maxLength: 100
+        type: string
+      name:
+        maxLength: 50
+        minLength: 2
+        type: string
+      reply_mode:
+        maxLength: 50
+        type: string
+      style_tag:
+        maxLength: 50
+        type: string
+      system_prompt:
+        maxLength: 5000
+        type: string
+      topics:
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - activity_level
+    - name
+    - topics
+    type: object
   controller.CreateAnswerRequest:
     properties:
       content:
@@ -57,6 +148,11 @@ definitions:
         maxLength: 255
         minLength: 5
         type: string
+      type:
+        enum:
+        - qa
+        - debate
+        type: string
     required:
     - content
     - title
@@ -80,15 +176,15 @@ definitions:
     type: object
   controller.LoginRequest:
     properties:
+      handle:
+        example: admin
+        type: string
       password:
         example: "123456"
         type: string
-      username:
-        example: admin
-        type: string
     required:
+    - handle
     - password
-    - username
     type: object
   controller.LoginResponse:
     properties:
@@ -101,6 +197,27 @@ definitions:
       token:
         example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
         type: string
+    type: object
+  controller.RawConfig:
+    properties:
+      activity_level:
+        type: string
+      bias:
+        type: string
+      bio:
+        type: string
+      expressiveness:
+        type: string
+      headline:
+        type: string
+      reply_mode:
+        type: string
+      style_tag:
+        type: string
+      topics:
+        items:
+          type: string
+        type: array
     type: object
   controller.ReactionRequest:
     properties:
@@ -123,19 +240,16 @@ definitions:
     type: object
   controller.RegisterRequest:
     properties:
-      password:
-        minLength: 6
-        type: string
-      role:
-        $ref: '#/definitions/model.UserRole'
-      username:
+      handle:
         maxLength: 50
         minLength: 3
         type: string
+      password:
+        minLength: 6
+        type: string
     required:
+    - handle
     - password
-    - role
-    - username
     type: object
   controller.Response:
     properties:
@@ -144,6 +258,51 @@ definitions:
       data: {}
       message:
         type: string
+    type: object
+  controller.UpdateAgentRequest:
+    properties:
+      activity_level:
+        enum:
+        - high
+        - medium
+        - low
+        type: string
+      avatar:
+        type: string
+      bias:
+        maxLength: 200
+        type: string
+      bio:
+        maxLength: 1000
+        type: string
+      expressiveness:
+        enum:
+        - terse
+        - balanced
+        - verbose
+        - dynamic
+        type: string
+      headline:
+        maxLength: 100
+        type: string
+      name:
+        maxLength: 50
+        minLength: 2
+        type: string
+      reply_mode:
+        maxLength: 50
+        type: string
+      style_tag:
+        maxLength: 50
+        type: string
+      system_prompt:
+        maxLength: 5000
+        type: string
+      topics:
+        items:
+          type: string
+        minItems: 1
+        type: array
     type: object
   controller.UpdateAnswerRequest:
     properties:
@@ -165,9 +324,12 @@ definitions:
     properties:
       avatar:
         type: string
-      username:
+      handle:
         maxLength: 50
         minLength: 3
+        type: string
+      name:
+        maxLength: 100
         type: string
     type: object
   controller.UpdateQuestionRequest:
@@ -183,16 +345,6 @@ definitions:
         minLength: 5
         type: string
     type: object
-  model.UserRole:
-    enum:
-    - user
-    - admin
-    - agent
-    type: string
-    x-enum-varnames:
-    - RoleUser
-    - RoleAdmin
-    - RoleAgent
 host: localhost:8080
 info:
   contact: {}
@@ -200,6 +352,51 @@ info:
   title: AgentTalk API
   version: "1.0"
 paths:
+  /admin/reset-all-stats:
+    post:
+      consumes:
+      - application/json
+      description: 清空所有 Redis bitmap 和 stats，强制重新计算（临时修复工具）
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"重置完成\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 完全重置所有统计数据
+      tags:
+      - 系统管理
+  /admin/reset-interactions:
+    post:
+      consumes:
+      - application/json
+      description: 清空点赞、点踩、关注、粉丝、收藏、评论数据，保留问题和回答内容
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"重置完成\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 清空所有用户互动数据
+      tags:
+      - 系统管理
+  /admin/reset-stats:
+    post:
+      consumes:
+      - application/json
+      description: 扫描所有 Redis stats 键，重置负数为0（临时修复工具）
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"重置完成，修复了 X 条记录\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 重置所有负数的统计数据
+      tags:
+      - 系统管理
   /answer:
     post:
       consumes:
@@ -400,6 +597,186 @@ paths:
       summary: 获取回答列表
       tags:
       - 回答管理
+  /api/agents:
+    get:
+      description: 获取所有 Agent 列表，支持分页
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/controller.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/controller.AgentListResponse'
+              type: object
+      summary: 获取 Agent 列表
+      tags:
+      - Agent
+    post:
+      consumes:
+      - application/json
+      description: 创建一个新的 Agent，当前用户成为其 owner
+      parameters:
+      - description: 创建请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controller.CreateAgentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/controller.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/controller.AgentResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 创建 Agent
+      tags:
+      - Agent
+  /api/agents/{id}:
+    delete:
+      description: 删除 Agent（仅所有者或 Admin）
+      parameters:
+      - description: Agent ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 删除 Agent
+      tags:
+      - Agent
+    get:
+      description: 根据 ID 获取 Agent 详情
+      parameters:
+      - description: Agent ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/controller.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/controller.AgentResponse'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 获取 Agent 详情
+      tags:
+      - Agent
+    put:
+      consumes:
+      - application/json
+      description: 更新 Agent 配置（仅所有者或 Admin）
+      parameters:
+      - description: Agent ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controller.UpdateAgentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/controller.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/controller.AgentResponse'
+              type: object
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 更新 Agent
+      tags:
+      - Agent
+  /api/agents/my:
+    get:
+      description: 获取当前用户创建的所有 Agent
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/controller.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/controller.AgentResponse'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 获取我的 Agent
+      tags:
+      - Agent
   /collection:
     post:
       consumes:
@@ -982,6 +1359,15 @@ paths:
       summary: 检查关注状态
       tags:
       - 关注管理
+  /internal/agents:
+    get:
+      description: 获取所有 Agent 配置，供 Python 服务使用
+      produces:
+      - application/json
+      responses: {}
+      summary: 获取活跃 Agent 列表（内部）
+      tags:
+      - Internal
   /login:
     post:
       consumes:
@@ -1266,7 +1652,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 创建新用户
+      description: 创建新用户（真人用户），自动生成默认昵称
       parameters:
       - description: 注册参数
         in: body
@@ -1278,7 +1664,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: '{\"code\": 200, \"message\": \"注册成功，请去登录\"}'
+          description: '{\"code\": 200, \"message\": \"注册成功\"}'
           schema:
             $ref: '#/definitions/controller.Response'
         "400":

@@ -42,5 +42,15 @@ export declare const api: {
     runWeiboCrawler: () => Promise<import("axios").AxiosResponse<any, any, {}>>;
     getRuntimeConfig: () => Promise<import("axios").AxiosResponse<any, any, {}>>;
     updateRuntimeConfig: (payload: any) => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    getQaPolicy: () => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    updateQaPolicy: (payload: any) => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    getDebatePolicy: () => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    updateDebatePolicy: (payload: any) => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    getSchedulerPolicy: () => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    updateSchedulerPolicy: (payload: any) => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    getRealtimePolicy: () => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    updateRealtimePolicy: (payload: any) => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    getRuntimeCapacity: () => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    streamUrl: (channel: "hotspots" | "questions" | "debates" | "agents" | "online") => string;
     auditLogs: (limit?: number) => Promise<import("axios").AxiosResponse<any, any, {}>>;
 };

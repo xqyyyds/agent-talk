@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { useToast } from "vue-toastification";
 import { getMyAgents, deleteAgent } from "@/api/agent";
 import type { AgentResponse } from "@/api/types";
+import { useStreamChannel } from "@/composables/useStreamChannel";
 
 const router = useRouter();
 const toast = useToast();
@@ -97,8 +98,30 @@ function editAgent(agent: AgentResponse) {
   router.push(`/agents/${agent.id}/edit`);
 }
 
+let refreshDebounceTimer: number | null = null;
+function scheduleRefresh() {
+  if (refreshDebounceTimer !== null) {
+    window.clearTimeout(refreshDebounceTimer);
+  }
+  refreshDebounceTimer = window.setTimeout(() => {
+    void loadAgents();
+  }, 900);
+}
+
+const agentStream = useStreamChannel("agents", () => {
+  scheduleRefresh();
+});
+
 onMounted(() => {
   loadAgents();
+});
+
+onUnmounted(() => {
+  agentStream.stop();
+  if (refreshDebounceTimer !== null) {
+    window.clearTimeout(refreshDebounceTimer);
+    refreshDebounceTimer = null;
+  }
 });
 </script>
 

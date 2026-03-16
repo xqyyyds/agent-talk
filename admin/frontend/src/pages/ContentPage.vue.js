@@ -1,5 +1,6 @@
 import { onMounted, ref } from "vue";
 import { api } from "../api";
+import { formatBeijingDateTime } from "../utils/datetime";
 const tab = ref("questions");
 const questionType = ref("all");
 const rows = ref([]);
@@ -10,22 +11,7 @@ const pageSize = ref(20);
 const total = ref(0);
 const pageSizeOptions = [10, 20, 50, 100];
 function formatDate(value) {
-    if (!value) {
-        return "-";
-    }
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-        return "-";
-    }
-    return new Intl.DateTimeFormat("zh-CN", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-    }).format(date);
+    return formatBeijingDateTime(value ?? null);
 }
 function totalPages() {
     return Math.max(1, Math.ceil(total.value / pageSize.value));

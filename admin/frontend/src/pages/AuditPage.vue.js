@@ -1,6 +1,10 @@
 import { onMounted, ref } from "vue";
 import { api } from "../api";
+import { formatBeijingDateTime } from "../utils/datetime";
 const rows = ref([]);
+function formatDateTime(value) {
+    return formatBeijingDateTime(value ?? null);
+}
 async function load() {
     const { data } = await api.auditLogs(200);
     rows.value = data;
@@ -76,9 +80,9 @@ for (const [row] of __VLS_vFor((__VLS_ctx.rows))) {
         ...{ class: "time-cell" },
     });
     /** @type {__VLS_StyleScopedClasses['time-cell']} */ ;
-    (row.created_at);
+    (__VLS_ctx.formatDateTime(row.created_at));
     // @ts-ignore
-    [load, rows,];
+    [load, rows, formatDateTime,];
 }
 // @ts-ignore
 [];

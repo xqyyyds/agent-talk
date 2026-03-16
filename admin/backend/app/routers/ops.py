@@ -51,6 +51,10 @@ async def _proxy(
     return resp.json()
 
 
+def _runtime_headers() -> dict[str, str]:
+    return {"x-runtime-token": settings.agent_service_runtime_token}
+
+
 @router.post("/debate/start")
 async def start_debate(
     payload: dict,
@@ -211,6 +215,151 @@ async def update_runtime_config(
         request=request,
     )
     return data
+
+
+@router.get("/runtime/qa-policy")
+async def get_runtime_qa_policy(_: AdminUser = Depends(get_current_admin)):
+    return await _proxy(
+        "GET",
+        "/admin/runtime/qa-policy",
+        headers=_runtime_headers(),
+    )
+
+
+@router.put("/runtime/qa-policy")
+async def update_runtime_qa_policy(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin),
+    request: Request = None,
+):
+    data = await _proxy(
+        "PUT",
+        "/admin/runtime/qa-policy",
+        headers=_runtime_headers(),
+        json_payload=payload,
+    )
+    log_action(
+        db,
+        current_admin.id,
+        "admin.update_runtime_qa_policy",
+        "runtime_policy",
+        "qa",
+        payload=payload,
+        request=request,
+    )
+    return data
+
+
+@router.get("/runtime/debate-policy")
+async def get_runtime_debate_policy(_: AdminUser = Depends(get_current_admin)):
+    return await _proxy(
+        "GET",
+        "/admin/runtime/debate-policy",
+        headers=_runtime_headers(),
+    )
+
+
+@router.put("/runtime/debate-policy")
+async def update_runtime_debate_policy(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin),
+    request: Request = None,
+):
+    data = await _proxy(
+        "PUT",
+        "/admin/runtime/debate-policy",
+        headers=_runtime_headers(),
+        json_payload=payload,
+    )
+    log_action(
+        db,
+        current_admin.id,
+        "admin.update_runtime_debate_policy",
+        "runtime_policy",
+        "debate",
+        payload=payload,
+        request=request,
+    )
+    return data
+
+
+@router.get("/runtime/scheduler-policy")
+async def get_runtime_scheduler_policy(_: AdminUser = Depends(get_current_admin)):
+    return await _proxy(
+        "GET",
+        "/admin/runtime/scheduler-policy",
+        headers=_runtime_headers(),
+    )
+
+
+@router.put("/runtime/scheduler-policy")
+async def update_runtime_scheduler_policy(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin),
+    request: Request = None,
+):
+    data = await _proxy(
+        "PUT",
+        "/admin/runtime/scheduler-policy",
+        headers=_runtime_headers(),
+        json_payload=payload,
+    )
+    log_action(
+        db,
+        current_admin.id,
+        "admin.update_runtime_scheduler_policy",
+        "runtime_policy",
+        "scheduler",
+        payload=payload,
+        request=request,
+    )
+    return data
+
+
+@router.get("/runtime/realtime-policy")
+async def get_runtime_realtime_policy(_: AdminUser = Depends(get_current_admin)):
+    return await _proxy(
+        "GET",
+        "/admin/runtime/realtime-policy",
+        headers=_runtime_headers(),
+    )
+
+
+@router.put("/runtime/realtime-policy")
+async def update_runtime_realtime_policy(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin),
+    request: Request = None,
+):
+    data = await _proxy(
+        "PUT",
+        "/admin/runtime/realtime-policy",
+        headers=_runtime_headers(),
+        json_payload=payload,
+    )
+    log_action(
+        db,
+        current_admin.id,
+        "admin.update_runtime_realtime_policy",
+        "runtime_policy",
+        "realtime",
+        payload=payload,
+        request=request,
+    )
+    return data
+
+
+@router.get("/runtime/capacity")
+async def get_runtime_capacity(_: AdminUser = Depends(get_current_admin)):
+    return await _proxy(
+        "GET",
+        "/admin/runtime/capacity",
+        headers=_runtime_headers(),
+    )
 
 
 @router.get("/audit/logs")

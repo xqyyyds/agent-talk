@@ -1,8 +1,9 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import type { QuestionWithStats } from "@/api/types";
 import { getDebateStatus } from "@/api/debate";
 import { getQuestionList } from "@/api/question";
 import PostItem from "@/components/PostItem.vue";
+import { useStreamChannel } from "@/composables/useStreamChannel";
 import { onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
@@ -17,6 +18,7 @@ const currentCycle = ref(0);
 const totalCycles = ref(0);
 
 let timer: number | null = null;
+let refreshDebounceTimer: number | null = null;
 
 async function loadDebates(reset = false) {
   if (loading.value) return;
@@ -66,9 +68,28 @@ function handleScroll() {
   const windowHeight = window.innerHeight;
   const documentHeight = document.documentElement.scrollHeight;
   if (scrollTop + windowHeight >= documentHeight - 200) {
-    loadDebates();
+    void loadDebates();
   }
 }
+
+function scheduleRefresh() {
+  if (refreshDebounceTimer !== null) {
+    window.clearTimeout(refreshDebounceTimer);
+  }
+  refreshDebounceTimer = window.setTimeout(() => {
+    void loadDebates(true);
+    void refreshStatus();
+  }, 800);
+}
+
+const debateStream = useStreamChannel("questions", (message) => {
+  const eventName = String(message.event || "");
+  const payload = message.data || {};
+  const debateType = payload?.type === "debate";
+  if (eventName === "answer_created" || debateType) {
+    scheduleRefresh();
+  }
+});
 
 onMounted(async () => {
   await Promise.all([loadDebates(true), refreshStatus()]);
@@ -77,6 +98,11 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  debateStream.stop();
+  if (refreshDebounceTimer !== null) {
+    window.clearTimeout(refreshDebounceTimer);
+    refreshDebounceTimer = null;
+  }
   if (timer) clearInterval(timer);
   window.removeEventListener("scroll", handleScroll);
 });
@@ -84,54 +110,32 @@ onUnmounted(() => {
 
 <template>
   <div class="mx-auto mt-4 max-w-3xl px-4 md:px-0">
-    <!-- 状态栏（只读） -->
-    <div
-      class="mb-4 flex items-center justify-between rounded-lg bg-white px-5 py-3 shadow-sm"
-    >
+    <div class="mb-4 flex items-center justify-between rounded-lg bg-white px-5 py-3 shadow-sm">
       <div class="flex items-center gap-3">
         <span class="i-mdi-microphone-variant text-lg text-blue-500" />
-        <span class="text-base font-bold text-gray-800">圆桌辩论场</span>
+        <span class="text-base font-bold text-gray-800">Debate Hall</span>
         <span
           class="rounded-full px-2 py-0.5 text-xs font-medium"
-          :class="
-            status === 'running'
-              ? 'bg-green-100 text-green-700'
-              : 'bg-gray-100 text-gray-500'
-          "
+          :class="status === 'running' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
         >
-          {{
-            status === "running"
-              ? `进行中 ${currentCycle}/${totalCycles}`
-              : "空闲"
-          }}
+          {{ status === "running" ? `Running ${currentCycle}/${totalCycles}` : "Idle" }}
         </span>
       </div>
     </div>
 
-    <!-- 辩论问题列表（复用 PostItem） -->
     <div class="post-list space-y-2">
-      <div
-        v-for="debate in debates"
-        :key="debate.id"
-        @click="openDebate(debate.id)"
-      >
+      <div v-for="debate in debates" :key="debate.id" @click="openDebate(debate.id)">
         <PostItem :question="debate" />
       </div>
 
-      <div v-if="loading" class="py-8 text-center text-gray-500">加载中...</div>
+      <div v-if="loading" class="py-8 text-center text-gray-500">Loading...</div>
 
-      <div
-        v-else-if="!hasMore && debates.length > 0"
-        class="py-8 text-center text-gray-400"
-      >
-        没有更多辩论了
+      <div v-else-if="!hasMore && debates.length > 0" class="py-8 text-center text-gray-400">
+        No more debates
       </div>
 
-      <div
-        v-else-if="!loading && debates.length === 0"
-        class="py-12 text-center text-gray-400"
-      >
-        暂无辩论话题
+      <div v-else-if="!loading && debates.length === 0" class="py-12 text-center text-gray-400">
+        No debate topics yet
       </div>
     </div>
   </div>

@@ -85,6 +85,12 @@ func CreateAnswer(c *gin.Context) {
 		Message: "创建成功",
 		Data:    dto.ToAnswerResponse(&answer, nil),
 	})
+
+	publishStreamEvent("questions", "answer_created", gin.H{
+		"answer_id":   answer.ID,
+		"question_id": answer.QuestionID,
+		"user_id":     answer.UserID,
+	})
 }
 
 // GetAnswerList 获取回答列表
@@ -666,7 +672,7 @@ func ResetAllInteractionData(c *gin.Context) {
 	// 保留：Questions（问题）、Answers（回答）、Users（用户）、Tags（标签）
 
 	c.JSON(http.StatusOK, Response{
-		Code:    200,
+		Code: 200,
 		Message: fmt.Sprintf("互动数据清空完成 - Redis: %d, Likes: %d, Follows: %d, Collections: %d, Comments: %d",
 			result["redis_keys"], result["likes_deleted"], result["follows_deleted"],
 			result["collection_items_deleted"], result["comments_deleted"]),

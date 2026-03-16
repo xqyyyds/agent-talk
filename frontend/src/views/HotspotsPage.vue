@@ -3,6 +3,8 @@ import type { Hotspot } from "../api/types";
 import type { AnswerWithStats } from "../api/types";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useStreamChannel } from "../composables/useStreamChannel";
+import { formatRichTextForDisplay } from "../utils/textRender";
 import {
   getHotspotDates,
   getHotspotDetail,
@@ -29,6 +31,7 @@ const detailLoading = ref(false);
 const agentAnswers = ref<AnswerWithStats[]>([]);
 const agentAnswersLoading = ref(false);
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
+let refreshDebounceTimer: number | null = null;
 const LIST_REFRESH_MS = 30000;
 const DETAIL_REFRESH_MS = 20000;
 
@@ -69,6 +72,10 @@ function sanitizeHtml(html: string): string {
     .replace(/<(p|div|section|span)[^>]*>(?:\s|&nbsp;|<br\s*\/?>)*<\/\1>/gi, "")
     .replace(/(<br\s*\/?>\s*){3,}/gi, "<br><br>")
     .trim();
+}
+
+function formatPlainContentToHtml(raw: string | undefined | null): string {
+  return formatRichTextForDisplay(stripHtml(raw || ""));
 }
 
 async function loadDates() {
@@ -211,6 +218,36 @@ function selectDate(date: string) {
   page.value = 1;
 }
 
+function scheduleRealtimeRefresh() {
+  if (refreshDebounceTimer !== null) {
+    window.clearTimeout(refreshDebounceTimer);
+  }
+  refreshDebounceTimer = window.setTimeout(() => {
+    if (isDetailMode.value && hotspotId.value > 0) {
+      void loadDetailById(hotspotId.value);
+      return;
+    }
+    if (!isDetailMode.value && selectedDate.value) {
+      void loadDates();
+      void loadHotspots();
+    }
+  }, 900);
+}
+
+const hotspotStream = useStreamChannel("hotspots", () => {
+  scheduleRealtimeRefresh();
+});
+
+const questionStream = useStreamChannel("questions", (message) => {
+  const payload = message.data || {};
+  if (
+    selectedHotspot.value?.question_id &&
+    Number(payload?.question_id || 0) === Number(selectedHotspot.value.question_id)
+  ) {
+    void loadAgentAnswers(selectedHotspot.value.question_id);
+  }
+});
+
 watch(activeSource, () => {
   if (isDetailMode.value) return;
   selectedDate.value = "";
@@ -256,6 +293,12 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  hotspotStream.stop();
+  questionStream.stop();
+  if (refreshDebounceTimer !== null) {
+    window.clearTimeout(refreshDebounceTimer);
+    refreshDebounceTimer = null;
+  }
   if (refreshTimer) {
     clearInterval(refreshTimer);
     refreshTimer = null;
@@ -317,9 +360,9 @@ onUnmounted(() => {
 
             <div
               v-if="selectedHotspot.content"
-              class="mb-4 text-[15px] text-gray-800 whitespace-pre-line"
+              class="mb-4 text-[15px] text-gray-800 formatted-content"
+              v-html="formatPlainContentToHtml(selectedHotspot.content)"
             >
-              {{ stripHtml(selectedHotspot.content) }}
             </div>
 
             <div class="flex flex-wrap items-center gap-3">
@@ -458,9 +501,9 @@ onUnmounted(() => {
                         </div>
 
                         <div
-                          class="text-[14px] text-[#121212] leading-relaxed whitespace-pre-line"
+                          class="text-[14px] text-[#121212] leading-relaxed formatted-content"
+                          v-html="formatPlainContentToHtml(answer.content)"
                         >
-                          {{ answer.content }}
                         </div>
                       </div>
                     </div>
@@ -661,6 +704,11 @@ onUnmounted(() => {
 
 .rich-text :deep(a:hover) {
   text-decoration: underline;
+}
+
+.formatted-content {
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .hotspot-answer-content :deep(blockquote) {
