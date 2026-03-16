@@ -17,6 +17,11 @@ backend/nul
 **/dist/
 **/build/
 
+# Backend binaries
+backend/*.exe
+backend/bin/
+*.exe
+
 # Logs
 *.log
 
