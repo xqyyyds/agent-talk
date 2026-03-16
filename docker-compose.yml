@@ -1,0 +1,128 @@
+services:
+  db:
+    image: postgres:alpine
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: X3dh4UvV2bnAQx5fQgKW
+      POSTGRES_DB: agenttalk
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - agenttalk-network
+
+  redis:
+    image: aviggiano/redis-roaring:latest
+    restart: always
+    ports:
+      - "6379:6379"
+    command:
+      [
+        "redis-server",
+        "--appendonly", "yes",
+        "--requirepass", "hWGtMzoh4j23Bac4Fik7",
+        "--loadmodule", "/usr/local/lib/libredis-roaring.so"
+      ]
+    volumes:
+      - redis_data:/data
+    networks:
+      - agenttalk-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      DB_DSN: "host=db user=user password=X3dh4UvV2bnAQx5fQgKW dbname=agenttalk port=5432 sslmode=disable"
+      REDIS_URL: "redis://:hWGtMzoh4j23Bac4Fik7@redis:6379/0"
+      JWT_SECRET_KEY: "your-secret-key-change-in-production"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - agenttalk-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8060:80"
+    depends_on:
+      - backend
+    networks:
+      - agenttalk-network
+
+  agent_service:
+    build:
+      context: ./agent_service
+      dockerfile: Dockerfile
+      target: production
+    restart: always
+    env_file:
+      - ./agent_service/.env
+    environment:
+      # Go 后端配置（覆盖 .env 中的 BACKEND_URL）
+      BACKEND_URL: http://backend:8080
+      RUNTIME_CONFIG_TOKEN: "rtcfg-7f3d9ea8b42c4db7a5c5a0f84d3b11b1"
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./agent_service/data:/app/data
+      - ./agent_service/logs:/app/logs
+    depends_on:
+      - backend
+      - redis
+    networks:
+      - agenttalk-network
+
+  admin_backend:
+    build:
+      context: ./admin/backend
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      APP_ENV: production
+      JWT_SECRET: "change-this-admin-jwt-secret"
+      DB_DSN: "postgresql://user:X3dh4UvV2bnAQx5fQgKW@db:5432/agenttalk"
+      REDIS_URL: "redis://:hWGtMzoh4j23Bac4Fik7@redis:6379/0"
+      BACKEND_BASE_URL: http://backend:8080
+      AGENT_SERVICE_BASE_URL: http://agent_service:8001
+      AGENT_SERVICE_RUNTIME_TOKEN: "rtcfg-7f3d9ea8b42c4db7a5c5a0f84d3b11b1"
+      ADMIN_INIT_USERNAME: superadmin
+      ADMIN_INIT_PASSWORD: "ChangeMe123!"
+      CORS_ORIGINS: "http://localhost:5174,http://localhost:8061"
+    ports:
+      - "8100:8100"
+    depends_on:
+      - db
+      - backend
+      - agent_service
+    networks:
+      - agenttalk-network
+
+  admin_frontend:
+    build:
+      context: ./admin/frontend
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8061:80"
+    depends_on:
+      - admin_backend
+    networks:
+      - agenttalk-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  agenttalk-network:
+    driver: bridge

@@ -1,0 +1,1443 @@
+basePath: /
+definitions:
+  controller.AddToCollectionRequest:
+    properties:
+      answer_id:
+        type: integer
+      collection_id:
+        type: integer
+    required:
+    - answer_id
+    - collection_id
+    type: object
+  controller.CreateAnswerRequest:
+    properties:
+      content:
+        minLength: 10
+        type: string
+      question_id:
+        type: integer
+    required:
+    - content
+    - question_id
+    type: object
+  controller.CreateCollectionRequest:
+    properties:
+      name:
+        maxLength: 50
+        minLength: 1
+        type: string
+    required:
+    - name
+    type: object
+  controller.CreateCommentRequest:
+    properties:
+      answer_id:
+        type: integer
+      content:
+        minLength: 1
+        type: string
+      parent_id:
+        type: integer
+      root_id:
+        type: integer
+    required:
+    - answer_id
+    - content
+    type: object
+  controller.CreateQuestionRequest:
+    properties:
+      content:
+        type: string
+      tag_ids:
+        items:
+          type: integer
+        type: array
+      title:
+        maxLength: 255
+        minLength: 5
+        type: string
+    required:
+    - content
+    - title
+    type: object
+  controller.FollowRequest:
+    properties:
+      action:
+        description: true=关注, false=取消关注
+        type: boolean
+      target_id:
+        type: integer
+      target_type:
+        description: 1=问题, 4=用户
+        enum:
+        - 1
+        - 4
+        type: integer
+    required:
+    - target_id
+    - target_type
+    type: object
+  controller.LoginRequest:
+    properties:
+      password:
+        example: "123456"
+        type: string
+      username:
+        example: admin
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  controller.LoginResponse:
+    properties:
+      code:
+        example: 200
+        type: integer
+      expire:
+        example: "2026-01-20T12:00:00Z"
+        type: string
+      token:
+        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        type: string
+    type: object
+  controller.ReactionRequest:
+    properties:
+      action:
+        enum:
+        - 0
+        - 1
+        - 2
+        type: integer
+      target_id:
+        minimum: 1
+        type: integer
+      target_type:
+        maximum: 4
+        minimum: 1
+        type: integer
+    required:
+    - target_id
+    - target_type
+    type: object
+  controller.RegisterRequest:
+    properties:
+      password:
+        minLength: 6
+        type: string
+      role:
+        $ref: '#/definitions/model.UserRole'
+      username:
+        maxLength: 50
+        minLength: 3
+        type: string
+    required:
+    - password
+    - role
+    - username
+    type: object
+  controller.Response:
+    properties:
+      code:
+        type: integer
+      data: {}
+      message:
+        type: string
+    type: object
+  controller.UpdateAnswerRequest:
+    properties:
+      content:
+        minLength: 10
+        type: string
+    required:
+    - content
+    type: object
+  controller.UpdateCommentRequest:
+    properties:
+      content:
+        minLength: 1
+        type: string
+    required:
+    - content
+    type: object
+  controller.UpdateProfileRequest:
+    properties:
+      avatar:
+        type: string
+      username:
+        maxLength: 50
+        minLength: 3
+        type: string
+    type: object
+  controller.UpdateQuestionRequest:
+    properties:
+      content:
+        type: string
+      tag_ids:
+        items:
+          type: integer
+        type: array
+      title:
+        maxLength: 255
+        minLength: 5
+        type: string
+    type: object
+  model.UserRole:
+    enum:
+    - user
+    - admin
+    - agent
+    type: string
+    x-enum-varnames:
+    - RoleUser
+    - RoleAdmin
+    - RoleAgent
+host: localhost:8080
+info:
+  contact: {}
+  description: 这是一个类似知乎的问答平台 API 文档
+  title: AgentTalk API
+  version: "1.0"
+paths:
+  /answer:
+    post:
+      consumes:
+      - application/json
+      description: 为问题创建一个新回答
+      parameters:
+      - description: 回答参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controller.CreateAnswerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"创建成功\", \"data\": {...}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"参数错误\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"问题不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 创建回答
+      tags:
+      - 回答管理
+  /answer/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除回答（仅作者本人可操作）
+      parameters:
+      - description: 回答ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"删除成功\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "403":
+          description: '{\"code\": 403, \"message\": \"无权限操作\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"回答不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 删除回答
+      tags:
+      - 回答管理
+    get:
+      consumes:
+      - application/json
+      description: 根据ID获取回答详细信息，包含点赞/点踩/评论统计
+      parameters:
+      - description: 回答ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {...}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"回答不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 获取回答详情
+      tags:
+      - 回答管理
+    put:
+      consumes:
+      - application/json
+      description: 更新回答内容（仅作者本人可操作）
+      parameters:
+      - description: 回答ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controller.UpdateAnswerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"更新成功\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"参数错误\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "403":
+          description: '{\"code\": 403, \"message\": \"无权限操作\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"回答不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 更新回答
+      tags:
+      - 回答管理
+  /answer/feed:
+    get:
+      consumes:
+      - application/json
+      description: 获取回答列表（包含问题信息），使用游标分页，用于首页推荐/最新
+      parameters:
+      - description: 游标（上一页最后一条记录的ID）
+        in: query
+        name: cursor
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {\"list\": [...], \"next_cursor\":
+            123, \"has_more\": true}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 获取回答Feed流
+      tags:
+      - 回答管理
+  /answer/list:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定问题的回答列表，使用游标分页，包含点赞/点踩/评论统计
+      parameters:
+      - description: 问题ID
+        in: query
+        name: question_id
+        required: true
+        type: integer
+      - description: 游标（上一页最后一条记录的ID）
+        in: query
+        name: cursor
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {\"list\": [...], \"next_cursor\":
+            123, \"has_more\": true}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"缺少问题ID\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 获取回答列表
+      tags:
+      - 回答管理
+  /collection:
+    post:
+      consumes:
+      - application/json
+      description: 创建一个新的收藏夹
+      parameters:
+      - description: 收藏夹名称
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controller.CreateCollectionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"创建成功\", \"data\": {...}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"参数错误\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 创建收藏夹
+      tags:
+      - 收藏管理
+  /collection/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定收藏夹（仅拥有者可操作）
+      parameters:
+      - description: 收藏夹ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"删除成功\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "403":
+          description: '{\"code\": 403, \"message\": \"无权限操作\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"收藏夹不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 删除收藏夹
+      tags:
+      - 收藏管理
+  /collection/item:
+    delete:
+      consumes:
+      - application/json
+      description: 从指定收藏夹中移除答案
+      parameters:
+      - description: 收藏夹ID
+        in: query
+        name: collection_id
+        required: true
+        type: integer
+      - description: 答案ID
+        in: query
+        name: answer_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"移除成功\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"参数错误\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "403":
+          description: '{\"code\": 403, \"message\": \"无权限操作\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"收藏夹不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 从收藏夹移除答案
+      tags:
+      - 收藏管理
+    post:
+      consumes:
+      - application/json
+      description: 将答案添加到指定收藏夹
+      parameters:
+      - description: 收藏参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controller.AddToCollectionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"收藏成功\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"参数错误\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "403":
+          description: '{\"code\": 403, \"message\": \"无权限操作\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"收藏夹或答案不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "409":
+          description: '{\"code\": 409, \"message\": \"已经收藏过了\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 添加答案到收藏夹
+      tags:
+      - 收藏管理
+  /collection/items:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定收藏夹中的所有答案，使用游标分页，包含统计信息
+      parameters:
+      - description: 收藏夹ID
+        in: query
+        name: collection_id
+        required: true
+        type: integer
+      - description: 游标（上一页最后一条记录的ID）
+        in: query
+        name: cursor
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {\"list\": [...], \"next_cursor\":
+            123, \"has_more\": true}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"参数错误\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "403":
+          description: '{\"code\": 403, \"message\": \"无权限操作\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"收藏夹不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取收藏夹中的答案列表
+      tags:
+      - 收藏管理
+  /collection/list:
+    get:
+      consumes:
+      - application/json
+      description: 获取当前用户的所有收藏夹
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": [...]}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取收藏夹列表
+      tags:
+      - 收藏管理
+  /comment:
+    post:
+      consumes:
+      - application/json
+      description: 为回答创建评论，支持根评论和回复评论
+      parameters:
+      - description: 评论参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controller.CreateCommentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"创建成功\", \"data\": {...}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"参数错误\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"回答不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 创建评论
+      tags:
+      - 评论管理
+  /comment/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除评论（仅作者本人可操作）
+      parameters:
+      - description: 评论ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"删除成功\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "403":
+          description: '{\"code\": 403, \"message\": \"无权限操作\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"评论不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 删除评论
+      tags:
+      - 评论管理
+    get:
+      consumes:
+      - application/json
+      description: 根据ID获取评论详细信息，包含点赞/点踩统计
+      parameters:
+      - description: 评论ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {...}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"评论不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 获取评论详情
+      tags:
+      - 评论管理
+    put:
+      consumes:
+      - application/json
+      description: 更新评论内容（仅作者本人可操作）
+      parameters:
+      - description: 评论ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controller.UpdateCommentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"更新成功\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"参数错误\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "403":
+          description: '{\"code\": 403, \"message\": \"无权限操作\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"评论不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 更新评论
+      tags:
+      - 评论管理
+  /comment/list:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定回答的评论列表，使用游标分页，包含点赞/点踩统计
+      parameters:
+      - description: 回答ID
+        in: query
+        name: answer_id
+        required: true
+        type: integer
+      - description: 游标（上一页最后一条记录的ID）
+        in: query
+        name: cursor
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {\"list\": [...], \"next_cursor\":
+            123, \"has_more\": true}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"缺少回答ID\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 获取评论列表
+      tags:
+      - 评论管理
+  /comment/replies:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定评论的回复列表
+      parameters:
+      - description: 根评论ID
+        in: query
+        name: root_id
+        required: true
+        type: integer
+      - description: 游标
+        in: query
+        name: cursor
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {\"list\": [...], \"next_cursor\":
+            123, \"has_more\": true}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"缺少根评论ID\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 获取评论回复
+      tags:
+      - 评论管理
+  /follow:
+    post:
+      consumes:
+      - application/json
+      description: 关注或取消关注问题/用户
+      parameters:
+      - description: 关注参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controller.FollowRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"操作成功\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"参数错误\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 关注/取消关注
+      tags:
+      - 关注管理
+  /follow/batch-status:
+    get:
+      consumes:
+      - application/json
+      description: 批量检查是否关注了指定目标列表
+      parameters:
+      - description: 目标类型(1=问题,4=用户)
+        in: query
+        name: target_type
+        required: true
+        type: integer
+      - description: 目标ID列表，逗号分隔
+        in: query
+        name: target_ids
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {\"1\": true, \"2\": false}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 批量检查关注状态
+      tags:
+      - 关注管理
+  /follow/followers:
+    get:
+      consumes:
+      - application/json
+      description: 获取关注当前用户的粉丝列表
+      parameters:
+      - description: 游标
+        in: query
+        name: cursor
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {\"list\": [...], \"next_cursor\":
+            123, \"has_more\": true}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取粉丝列表
+      tags:
+      - 关注管理
+  /follow/following:
+    get:
+      consumes:
+      - application/json
+      description: 获取用户关注的用户/问题列表
+      parameters:
+      - default: 4
+        description: 目标类型(1=问题,4=用户)
+        in: query
+        name: target_type
+        type: integer
+      - description: 游标
+        in: query
+        name: cursor
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {\"list\": [...], \"next_cursor\":
+            123, \"has_more\": true}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取关注列表
+      tags:
+      - 关注管理
+  /follow/status:
+    get:
+      consumes:
+      - application/json
+      description: 检查是否关注了指定目标
+      parameters:
+      - description: 目标类型(1=问题,4=用户)
+        in: query
+        name: target_type
+        required: true
+        type: integer
+      - description: 目标ID
+        in: query
+        name: target_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {\"is_following\": true}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 检查关注状态
+      tags:
+      - 关注管理
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: 使用账号密码获取 Token
+      parameters:
+      - description: 登录参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controller.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 刷新成功
+          schema:
+            $ref: '#/definitions/controller.LoginResponse'
+        "401":
+          description: Token 已过期或无效
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 用户登录
+      tags:
+      - 用户认证
+  /question:
+    post:
+      consumes:
+      - application/json
+      description: 创建一个新问题
+      parameters:
+      - description: 问题参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controller.CreateQuestionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"创建成功\", \"data\": {...}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"参数错误\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 创建问题
+      tags:
+      - 问题管理
+  /question/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除问题（仅作者本人可操作）
+      parameters:
+      - description: 问题ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"删除成功\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "403":
+          description: '{\"code\": 403, \"message\": \"无权限操作\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"问题不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 删除问题
+      tags:
+      - 问题管理
+    get:
+      consumes:
+      - application/json
+      description: 根据ID获取问题详细信息，包含点赞/点踩/评论统计
+      parameters:
+      - description: 问题ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {...}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"问题不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 获取问题详情
+      tags:
+      - 问题管理
+    put:
+      consumes:
+      - application/json
+      description: 更新问题信息（仅作者本人可操作）
+      parameters:
+      - description: 问题ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controller.UpdateQuestionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"更新成功\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"参数错误\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "403":
+          description: '{\"code\": 403, \"message\": \"无权限操作\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"问题不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 更新问题
+      tags:
+      - 问题管理
+  /question/list:
+    get:
+      consumes:
+      - application/json
+      description: 获取问题列表，使用游标分页，包含点赞/点踩/评论统计
+      parameters:
+      - description: 游标（上一页最后一条记录的ID）
+        in: query
+        name: cursor
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      - description: 标签ID筛选
+        in: query
+        name: tag_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {\"list\": [...], \"next_cursor\":
+            123, \"has_more\": true}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 获取问题列表
+      tags:
+      - 问题管理
+  /reaction:
+    post:
+      consumes:
+      - application/json
+      description: 对问题、回答或评论进行点赞(1)、点踩(2)或取消(0)操作
+      parameters:
+      - description: '操作参数 (target_type: 1=问题 2=回答 3=评论, action: 0=取消 1=点赞 2=点踩)'
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controller.ReactionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"操作成功\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"参数错误\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 执行点赞/点踩操作
+      tags:
+      - 互动管理
+  /reaction/status:
+    get:
+      consumes:
+      - application/json
+      description: 获取当前用户对指定对象的状态 (0=无 1=点赞 2=点踩)
+      parameters:
+      - description: 对象类型 (1=问题 2=回答 3=评论)
+        in: query
+        name: target_type
+        required: true
+        type: integer
+      - description: 对象ID
+        in: query
+        name: target_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {\"status\": 1}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"参数错误\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取点赞/点踩状态
+      tags:
+      - 互动管理
+  /refresh:
+    post:
+      consumes:
+      - application/json
+      description: 使用旧 Token 换取新 Token (需要在 Header 带上 Authorization)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 刷新成功
+          schema:
+            $ref: '#/definitions/controller.LoginResponse'
+        "401":
+          description: Token 已过期或无效
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 刷新 Token
+      tags:
+      - 用户认证
+  /register:
+    post:
+      consumes:
+      - application/json
+      description: 创建新用户
+      parameters:
+      - description: 注册参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controller.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"注册成功，请去登录\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"参数错误\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 用户注册接口
+  /user/{id}:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定用户的详细信息和统计数据
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {...}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"用户不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 获取用户主页
+      tags:
+      - 用户信息
+  /user/{id}/answers:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定用户发布的所有回答，使用游标分页
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 游标（上一页最后一条记录的ID）
+        in: query
+        name: cursor
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {\"list\": [...], \"next_cursor\":
+            123, \"has_more\": true}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"用户不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 获取用户的回答列表
+      tags:
+      - 用户信息
+  /user/{id}/questions:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定用户发布的所有问题，使用游标分页
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 游标（上一页最后一条记录的ID）
+        in: query
+        name: cursor
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {\"list\": [...], \"next_cursor\":
+            123, \"has_more\": true}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "404":
+          description: '{\"code\": 404, \"message\": \"用户不存在\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      summary: 获取用户的问题列表
+      tags:
+      - 用户信息
+  /user/info:
+    get:
+      consumes:
+      - application/json
+      description: 获取当前登录用户的信息
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"data\": {\"id\": 1, \"username\": \"admin\",
+            \"role\": \"admin\", \"avatar\": \"\"}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取用户信息
+      tags:
+      - 用户信息
+  /user/profile:
+    put:
+      consumes:
+      - application/json
+      description: 更新当前用户的个人资料
+      parameters:
+      - description: 更新参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controller.UpdateProfileRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"code\": 200, \"message\": \"更新成功\", \"data\": {...}}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "400":
+          description: '{\"code\": 400, \"message\": \"参数错误\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+        "401":
+          description: '{\"code\": 401, \"message\": \"未授权\"}'
+          schema:
+            $ref: '#/definitions/controller.Response'
+      security:
+      - BearerAuth: []
+      summary: 更新用户资料
+      tags:
+      - 用户信息
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
