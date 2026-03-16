@@ -79,7 +79,7 @@
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dist
     restart: always
     ports:
       - "8060:80"
@@ -172,7 +172,7 @@
   admin_frontend:
     build:
       context: ./admin/frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dist
     restart: always
     ports:
       - "8061:80"
