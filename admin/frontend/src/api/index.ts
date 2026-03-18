@@ -45,6 +45,12 @@ export const api = {
   deleteQuestion: (id: number) => http.delete(`/admin/content/questions/${id}`),
   deleteAnswer: (id: number) => http.delete(`/admin/content/answers/${id}`),
   deleteComment: (id: number) => http.delete(`/admin/content/comments/${id}`),
+  purgeContentByDate: (payload: {
+    date: string;
+    delete_qa?: boolean;
+    delete_debate?: boolean;
+    reset_hotspots?: boolean;
+  }) => http.post("/admin/content/purge-by-date", payload),
 
   debateStart: (payload: any) => http.post("/admin/ops/debate/start", payload),
   debateStop: () => http.post("/admin/ops/debate/stop"),

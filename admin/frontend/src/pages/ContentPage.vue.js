@@ -9,7 +9,21 @@ const error = ref("");
 const page = ref(1);
 const pageSize = ref(20);
 const total = ref(0);
+const purgeDate = ref(getTodayBeijingDate());
+const purgeDeleteQa = ref(true);
+const purgeDeleteDebate = ref(true);
+const purgeResetHotspots = ref(true);
+const purgeLoading = ref(false);
+const purgeResult = ref("");
 const pageSizeOptions = [10, 20, 50, 100];
+function getTodayBeijingDate() {
+    return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Shanghai",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).format(new Date());
+}
 function formatDate(value) {
     return formatBeijingDateTime(value ?? null);
 }
@@ -132,6 +146,40 @@ async function onPageSizeChange(event) {
     page.value = 1;
     await load();
 }
+async function purgeByDate() {
+    if (!purgeDate.value) {
+        error.value = "请选择北京时间日期";
+        return;
+    }
+    if (!purgeDeleteQa.value && !purgeDeleteDebate.value && !purgeResetHotspots.value) {
+        error.value = "请至少选择一项操作";
+        return;
+    }
+    const confirmed = window.confirm(`确认按北京时间 ${purgeDate.value} 执行清理吗？\n该操作会删除选中范围内内容，且无法恢复。`);
+    if (!confirmed)
+        return;
+    purgeLoading.value = true;
+    error.value = "";
+    purgeResult.value = "";
+    try {
+        const { data } = await api.purgeContentByDate({
+            date: purgeDate.value,
+            delete_qa: purgeDeleteQa.value,
+            delete_debate: purgeDeleteDebate.value,
+            reset_hotspots: purgeResetHotspots.value,
+        });
+        const result = data?.data || {};
+        purgeResult.value = `执行完成：日期 ${result.date || purgeDate.value}（${result.timezone || "Asia/Shanghai"}），删除问题 ${result.deleted_questions || 0} 条，删除回答 ${result.deleted_answers || 0} 条，恢复热点 ${result.hotspots_reset || 0} 条。`;
+        page.value = 1;
+        await load();
+    }
+    catch (err) {
+        error.value = err?.response?.data?.detail || err?.message || "按日期清理失败";
+    }
+    finally {
+        purgeLoading.value = false;
+    }
+}
 onMounted(load);
 const __VLS_ctx = {
     ...{},
@@ -149,6 +197,70 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
 });
 /** @type {__VLS_StyleScopedClasses['section-title']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "panel-soft" },
+    ...{ style: {} },
+});
+/** @type {__VLS_StyleScopedClasses['panel-soft']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "toolbar" },
+});
+/** @type {__VLS_StyleScopedClasses['toolbar']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "toolbar-group" },
+});
+/** @type {__VLS_StyleScopedClasses['toolbar-group']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+    ...{ class: "label-inline" },
+});
+/** @type {__VLS_StyleScopedClasses['label-inline']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "date",
+    disabled: (__VLS_ctx.loading || __VLS_ctx.purgeLoading),
+});
+(__VLS_ctx.purgeDate);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({
+    ...{ class: "label-inline" },
+});
+/** @type {__VLS_StyleScopedClasses['label-inline']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "checkbox",
+    disabled: (__VLS_ctx.loading || __VLS_ctx.purgeLoading),
+});
+(__VLS_ctx.purgeDeleteQa);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({
+    ...{ class: "label-inline" },
+});
+/** @type {__VLS_StyleScopedClasses['label-inline']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "checkbox",
+    disabled: (__VLS_ctx.loading || __VLS_ctx.purgeLoading),
+});
+(__VLS_ctx.purgeDeleteDebate);
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({
+    ...{ class: "label-inline" },
+});
+/** @type {__VLS_StyleScopedClasses['label-inline']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "checkbox",
+    disabled: (__VLS_ctx.loading || __VLS_ctx.purgeLoading),
+});
+(__VLS_ctx.purgeResetHotspots);
+__VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+    ...{ onClick: (__VLS_ctx.purgeByDate) },
+    ...{ class: "warn" },
+    disabled: (__VLS_ctx.loading || __VLS_ctx.purgeLoading),
+});
+/** @type {__VLS_StyleScopedClasses['warn']} */ ;
+(__VLS_ctx.purgeLoading ? "执行中..." : "按日期执行清理");
+if (__VLS_ctx.purgeResult) {
+    __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+        ...{ class: "form-note" },
+        ...{ style: {} },
+    });
+    /** @type {__VLS_StyleScopedClasses['form-note']} */ ;
+    (__VLS_ctx.purgeResult);
+}
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "toolbar content-toolbar" },
 });
 /** @type {__VLS_StyleScopedClasses['toolbar']} */ ;
@@ -161,7 +273,7 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ onClick: (...[$event]) => {
             __VLS_ctx.switchTab('questions');
             // @ts-ignore
-            [switchTab,];
+            [loading, loading, loading, loading, loading, purgeLoading, purgeLoading, purgeLoading, purgeLoading, purgeLoading, purgeLoading, purgeDate, purgeDeleteQa, purgeDeleteDebate, purgeResetHotspots, purgeByDate, purgeResult, purgeResult, switchTab,];
         } },
     ...{ class: "secondary" },
     ...{ class: ({ 'is-active': __VLS_ctx.tab === 'questions' }) },
@@ -173,7 +285,7 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ onClick: (...[$event]) => {
             __VLS_ctx.switchTab('answers');
             // @ts-ignore
-            [switchTab, tab, loading,];
+            [loading, switchTab, tab,];
         } },
     ...{ class: "secondary" },
     ...{ class: ({ 'is-active': __VLS_ctx.tab === 'answers' }) },
@@ -185,7 +297,7 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ onClick: (...[$event]) => {
             __VLS_ctx.switchTab('comments');
             // @ts-ignore
-            [switchTab, tab, loading,];
+            [loading, switchTab, tab,];
         } },
     ...{ class: "secondary" },
     ...{ class: ({ 'is-active': __VLS_ctx.tab === 'comments' }) },
@@ -218,7 +330,7 @@ if (__VLS_ctx.tab === 'questions') {
                     return;
                 __VLS_ctx.switchQuestionType('all');
                 // @ts-ignore
-                [tab, tab, loading, total, switchQuestionType,];
+                [loading, tab, tab, total, switchQuestionType,];
             } },
         ...{ class: "secondary" },
         ...{ class: ({ 'is-active': __VLS_ctx.questionType === 'all' }) },
@@ -362,7 +474,7 @@ for (const [row] of __VLS_vFor((__VLS_ctx.rows))) {
         ...{ class: "mono" },
     });
     /** @type {__VLS_StyleScopedClasses['mono']} */ ;
-    (row.question_id || row.answer_id || "-");
+    (row.question_id || row.answer_id || '-');
     if (__VLS_ctx.tab === 'questions') {
         __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({
             ...{ class: "type-cell" },
@@ -373,7 +485,7 @@ for (const [row] of __VLS_vFor((__VLS_ctx.rows))) {
             ...{ class: (row.type === 'debate' ? 'badge-debate' : 'badge-qa') },
         });
         /** @type {__VLS_StyleScopedClasses['badge']} */ ;
-        (row.type || "qa");
+        (row.type || 'qa');
     }
     __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({
         ...{ class: "time-cell" },
@@ -390,7 +502,7 @@ for (const [row] of __VLS_vFor((__VLS_ctx.rows))) {
         ...{ onClick: (...[$event]) => {
                 __VLS_ctx.editRow(row);
                 // @ts-ignore
-                [tab, tab, loading, load, error, error, rows, formatDate, editRow,];
+                [loading, tab, tab, load, error, error, rows, formatDate, editRow,];
             } },
         ...{ class: "secondary" },
         disabled: (__VLS_ctx.loading),
@@ -417,6 +529,6 @@ if (!__VLS_ctx.loading && __VLS_ctx.rows.length === 0) {
     });
 }
 // @ts-ignore
-[tab, loading, rows,];
+[loading, tab, rows,];
 const __VLS_export = (await import('vue')).defineComponent({});
 export default {};

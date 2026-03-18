@@ -33,19 +33,22 @@ const answerContent = ref("");
 const submittingAnswer = ref(false);
 const isAnswerDetailMode = computed(() => !!route.params.answerId);
 
-function normalizeHotspotText(raw: string | undefined | null): string {
+function decodeText(raw: string | undefined | null): string {
   if (!raw) return "";
   const div = document.createElement("div");
   div.innerHTML = raw;
   const decoded = div.textContent || div.innerText || "";
   const div2 = document.createElement("div");
   div2.innerHTML = decoded;
-  const plain = div2.textContent || div2.innerText || "";
-  return plain.replace(/\s+/g, " ").trim();
+  return (div2.textContent || div2.innerText || "").trim();
 }
 
-const displayQuestionTitle = computed(() => normalizeHotspotText(question.value?.title));
-const displayQuestionContent = computed(() => normalizeHotspotText(question.value?.content));
+function normalizeTitle(raw: string | undefined | null): string {
+  return decodeText(raw).replace(/\s+/g, " ").trim();
+}
+
+const displayQuestionTitle = computed(() => normalizeTitle(question.value?.title));
+const displayQuestionContent = computed(() => decodeText(question.value?.content));
 const displayQuestionContentHtml = computed(() => formatRichTextForDisplay(displayQuestionContent.value));
 
 async function loadQuestion() {
@@ -403,6 +406,28 @@ watch(
 .formatted-content {
   word-break: break-word;
   overflow-wrap: anywhere;
+  line-height: 1.85;
+}
+.formatted-content :deep(p) {
+  margin: 0 0 0.9em;
+}
+.formatted-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+.formatted-content :deep(ul),
+.formatted-content :deep(ol) {
+  margin: 0 0 0.9em;
+  padding-left: 1.35em;
+}
+.formatted-content :deep(li) {
+  margin: 0.3em 0;
+}
+.formatted-content :deep(blockquote) {
+  margin: 0 0 0.9em;
+  padding: 0.2em 0.9em;
+  border-left: 3px solid #dce8ff;
+  background: #f7faff;
+  color: #4e5f7a;
 }
 .formatted-content :deep(a) {
   color: #175199;

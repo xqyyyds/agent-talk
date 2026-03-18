@@ -13,6 +13,12 @@ logger = logging.getLogger("agent_service")
 T = TypeVar("T")
 
 
+def _to_str(value: object, default: str = "") -> str:
+    if value is None:
+        return default
+    return str(value).strip()
+
+
 def _to_float(value: object, default: float) -> float:
     try:
         return float(value)
@@ -52,6 +58,18 @@ def _safe_error_text(exc: Exception) -> str:
     return text[:2000]
 
 
+def _ensure_primary_config(*, model: str, api_base: str, api_key: str) -> None:
+    missing: list[str] = []
+    if not model:
+        missing.append("llm_model")
+    if not api_base:
+        missing.append("openai_api_base")
+    if not api_key:
+        missing.append("openai_api_key")
+    if missing:
+        raise ValueError(f"primary llm config missing: {', '.join(missing)}")
+
+
 async def run_with_llm_failover(
     *,
     scene: str,
@@ -60,7 +78,14 @@ async def run_with_llm_failover(
     temperature_override: float | None = None,
 ) -> T:
     cfg = await get_runtime_config()
-    primary_model = str(cfg.get("llm_model", settings.llm_model))
+    primary_model = _to_str(cfg.get("llm_model", settings.llm_model))
+    primary_api_base = _to_str(cfg.get("openai_api_base", settings.openai_api_base))
+    primary_api_key = _to_str(cfg.get("openai_api_key", settings.openai_api_key))
+    _ensure_primary_config(
+        model=primary_model,
+        api_base=primary_api_base,
+        api_key=primary_api_key,
+    )
     primary_temperature = (
         _to_float(cfg.get("llm_temperature"), settings.llm_temperature)
         if temperature_override is None
@@ -68,8 +93,8 @@ async def run_with_llm_failover(
     )
     primary_llm = _build_llm(
         model=primary_model,
-        api_base=str(cfg.get("openai_api_base", settings.openai_api_base)),
-        api_key=str(cfg.get("openai_api_key", settings.openai_api_key)),
+        api_base=primary_api_base,
+        api_key=primary_api_key,
         max_tokens=max_tokens,
         temperature=primary_temperature,
     )
@@ -77,12 +102,22 @@ async def run_with_llm_failover(
     try:
         return await runner(primary_llm)
     except Exception as primary_error:
+        primary_error_text = _safe_error_text(primary_error)
         mode = str(cfg.get("llm_failover_mode", "single")).strip().lower()
         can_fallback = mode == "dual_fallback" and _has_secondary(cfg)
         if not can_fallback:
-            raise
+            logger.error(
+                "Primary LLM failed without fallback: scene=%s model=%s base=%s error=%s",
+                scene,
+                primary_model,
+                primary_api_base,
+                primary_error_text,
+            )
+            raise RuntimeError(
+                f"primary llm failed (model={primary_model}, base={primary_api_base}): {primary_error_text}"
+            ) from primary_error
 
-        secondary_model = str(cfg.get("llm_model_secondary", "")).strip()
+        secondary_model = _to_str(cfg.get("llm_model_secondary", ""))
         secondary_temperature = (
             _to_float(cfg.get("llm_temperature_secondary"), settings.llm_temperature)
             if temperature_override is None
@@ -90,13 +125,11 @@ async def run_with_llm_failover(
         )
         secondary_llm = _build_llm(
             model=secondary_model,
-            api_base=str(cfg.get("openai_api_base_secondary", "")).strip(),
-            api_key=str(cfg.get("openai_api_key_secondary", "")).strip(),
+            api_base=_to_str(cfg.get("openai_api_base_secondary", "")),
+            api_key=_to_str(cfg.get("openai_api_key_secondary", "")),
             max_tokens=max_tokens,
             temperature=secondary_temperature,
         )
-
-        primary_error_text = _safe_error_text(primary_error)
         try:
             result = await runner(secondary_llm)
             await push_llm_alert(

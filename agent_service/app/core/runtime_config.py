@@ -22,6 +22,17 @@ _ALLOWED_KEYS = {
     "weibo_cookie",
 }
 
+_STRIP_STRING_KEYS = {
+    "llm_failover_mode",
+    "openai_api_base",
+    "openai_api_key",
+    "llm_model",
+    "openai_api_base_secondary",
+    "openai_api_key_secondary",
+    "llm_model_secondary",
+    "tavily_api_key",
+}
+
 _DEFAULTS: dict[str, Any] = {
     "llm_failover_mode": "single",
     "openai_api_base": settings.openai_api_base,
@@ -38,6 +49,17 @@ _DEFAULTS: dict[str, Any] = {
 }
 
 _cache: dict[str, Any] = {"data": None, "ts": 0.0}
+
+
+def _normalize_value(key: str, value: Any) -> Any:
+    if key in _STRIP_STRING_KEYS and isinstance(value, str):
+        value = value.strip()
+
+    if key == "llm_failover_mode":
+        mode = str(value).strip().lower()
+        return mode if mode in {"single", "dual_fallback"} else "single"
+
+    return value
 
 
 def _to_string_map(values: dict[str, Any]) -> dict[str, str]:
@@ -90,7 +112,7 @@ async def update_runtime_config(payload: dict[str, Any]) -> dict[str, Any]:
             continue
         if value is None:
             continue
-        updates[key] = value
+        updates[key] = _normalize_value(key, value)
 
     if not updates:
         return await get_runtime_config(force_refresh=True)

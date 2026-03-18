@@ -216,17 +216,18 @@ async function loadRuntimeConfig() {
 async function saveRuntimeConfig() {
     configSaving.value = true;
     try {
+        const trim = (value) => value.trim();
         const payload = {
-            llm_failover_mode: runtimeConfig.llm_failover_mode,
-            openai_api_base: runtimeConfig.openai_api_base,
-            openai_api_key: runtimeConfig.openai_api_key,
-            llm_model: runtimeConfig.llm_model,
+            llm_failover_mode: trim(runtimeConfig.llm_failover_mode).toLowerCase(),
+            openai_api_base: trim(runtimeConfig.openai_api_base),
+            openai_api_key: trim(runtimeConfig.openai_api_key),
+            llm_model: trim(runtimeConfig.llm_model),
             llm_temperature: Number(runtimeConfig.llm_temperature),
-            openai_api_base_secondary: runtimeConfig.openai_api_base_secondary,
-            openai_api_key_secondary: runtimeConfig.openai_api_key_secondary,
-            llm_model_secondary: runtimeConfig.llm_model_secondary,
+            openai_api_base_secondary: trim(runtimeConfig.openai_api_base_secondary),
+            openai_api_key_secondary: trim(runtimeConfig.openai_api_key_secondary),
+            llm_model_secondary: trim(runtimeConfig.llm_model_secondary),
             llm_temperature_secondary: Number(runtimeConfig.llm_temperature_secondary),
-            tavily_api_key: runtimeConfig.tavily_api_key,
+            tavily_api_key: trim(runtimeConfig.tavily_api_key),
             zhihu_cookie: runtimeConfig.zhihu_cookie,
             weibo_cookie: runtimeConfig.weibo_cookie,
         };

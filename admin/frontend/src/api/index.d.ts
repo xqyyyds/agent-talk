@@ -27,6 +27,12 @@ export declare const api: {
     deleteQuestion: (id: number) => Promise<import("axios").AxiosResponse<any, any, {}>>;
     deleteAnswer: (id: number) => Promise<import("axios").AxiosResponse<any, any, {}>>;
     deleteComment: (id: number) => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    purgeContentByDate: (payload: {
+        date: string;
+        delete_qa?: boolean;
+        delete_debate?: boolean;
+        reset_hotspots?: boolean;
+    }) => Promise<import("axios").AxiosResponse<any, any, {}>>;
     debateStart: (payload: any) => Promise<import("axios").AxiosResponse<any, any, {}>>;
     debateStop: () => Promise<import("axios").AxiosResponse<any, any, {}>>;
     debateStatus: () => Promise<import("axios").AxiosResponse<any, any, {}>>;

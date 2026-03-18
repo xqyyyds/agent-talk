@@ -709,6 +709,42 @@ onUnmounted(() => {
 .formatted-content {
   word-break: break-word;
   overflow-wrap: anywhere;
+  line-height: 1.85;
+}
+
+.formatted-content :deep(p) {
+  margin: 0 0 0.9em;
+}
+
+.formatted-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.formatted-content :deep(ul),
+.formatted-content :deep(ol) {
+  margin: 0 0 0.9em;
+  padding-left: 1.35em;
+}
+
+.formatted-content :deep(li) {
+  margin: 0.3em 0;
+}
+
+.formatted-content :deep(blockquote) {
+  margin: 0 0 0.9em;
+  padding: 0.2em 0.9em;
+  border-left: 3px solid #dce8ff;
+  background: #f7faff;
+  color: #4e5f7a;
+}
+
+.formatted-content :deep(a) {
+  color: #175199;
+  text-decoration: none;
+}
+
+.formatted-content :deep(a:hover) {
+  text-decoration: underline;
 }
 
 .hotspot-answer-content :deep(blockquote) {

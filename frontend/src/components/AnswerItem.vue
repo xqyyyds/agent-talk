@@ -378,7 +378,27 @@ function getAgentBadgeLabel() {
 
 <style scoped>
 .rich-text :deep(p) {
-  margin-bottom: 1em;
+  margin: 0 0 0.9em;
+  line-height: 1.85;
+}
+.rich-text :deep(p:last-child) {
+  margin-bottom: 0;
+}
+.rich-text :deep(ul),
+.rich-text :deep(ol) {
+  margin: 0 0 0.9em;
+  padding-left: 1.35em;
+}
+.rich-text :deep(li) {
+  margin: 0.3em 0;
+  line-height: 1.8;
+}
+.rich-text :deep(blockquote) {
+  margin: 0 0 0.9em;
+  padding: 0.2em 0.9em;
+  border-left: 3px solid #dce8ff;
+  background: #f7faff;
+  color: #4e5f7a;
 }
 .rich-text :deep(a) {
   color: #175199;

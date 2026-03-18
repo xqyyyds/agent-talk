@@ -27,10 +27,9 @@ class LLMClient:
         text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
         text = re.sub(r"\*([^*]+)\*", r"\1", text)
         text = re.sub(r"^(#{1,6})\s+", "", text, flags=re.MULTILINE)
-        text = re.sub(r"^[\s]*[-*]\s+", "", text, flags=re.MULTILINE)
-        text = re.sub(r"^[\s]*\d+\.\s+", "", text, flags=re.MULTILINE)
+        # Keep list prefixes and indentation for downstream paragraph/list rendering.
         lines = text.split("\n")
-        cleaned_lines = [line.lstrip() for line in lines]
+        cleaned_lines = [line.rstrip() for line in lines]
         text = "\n".join(cleaned_lines)
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
@@ -59,6 +58,29 @@ class LLMClient:
             )
 
         return "\n## 参考资料\n" + "\n\n".join(items)
+
+    def _is_json_parse_error(self, exc: Exception) -> bool:
+        text = str(exc).lower()
+        keywords = ("invalid json", "json_invalid", "json decode", "jsondecodeerror")
+        return any(keyword in text for keyword in keywords)
+
+    def _coerce_plain_answer_output(self, text: str) -> AnswerOutput:
+        cleaned = self._clean_markdown_formatting(text)
+        if not cleaned:
+            cleaned = "这个问题我还在想，先说一个直观感受：现实里大家会更看重确定性。"
+        first_line = cleaned.splitlines()[0].strip()
+        viewpoint = first_line[:100] if first_line else cleaned[:100]
+        return AnswerOutput(
+            content=cleaned,
+            viewpoint=viewpoint or "基于现实体验给出的直接判断",
+            evidence=[],
+            references=[],
+        )
+
+    def _should_use_plain_answer_output(self, llm: object) -> bool:
+        model_name = str(getattr(llm, "model_name", "")).strip().lower()
+        api_base = str(getattr(llm, "openai_api_base", "")).strip().lower()
+        return model_name.startswith("glm-") or "bigmodel.cn" in api_base
 
     async def generate_question(
         self,
@@ -158,10 +180,39 @@ class LLMClient:
 
         try:
             async def _invoke(llm):
-                chain = ChatPromptTemplate.from_messages(
+                prompt_template = ChatPromptTemplate.from_messages(
                     [("system", system_prompt), ("human", prompts.ANSWER_USER_PROMPT)]
-                ) | llm.with_structured_output(AnswerOutput, include_raw=False)
-                return await chain.ainvoke(payload)
+                )
+                if self._should_use_plain_answer_output(llm):
+                    raw_chain = prompt_template | llm
+                    raw_result = await raw_chain.ainvoke(payload)
+                    raw_content = (
+                        raw_result.content
+                        if hasattr(raw_result, "content")
+                        else str(raw_result)
+                    )
+                    return self._coerce_plain_answer_output(str(raw_content))
+
+                structured_chain = prompt_template | llm.with_structured_output(
+                    AnswerOutput, include_raw=False
+                )
+                try:
+                    return await structured_chain.ainvoke(payload)
+                except Exception as parse_error:
+                    if not self._is_json_parse_error(parse_error):
+                        raise
+                    logger.warning(
+                        "Answer structured output parse failed, fallback to plain text: %s",
+                        parse_error,
+                    )
+                    raw_chain = prompt_template | llm
+                    raw_result = await raw_chain.ainvoke(payload)
+                    raw_content = (
+                        raw_result.content
+                        if hasattr(raw_result, "content")
+                        else str(raw_result)
+                    )
+                    return self._coerce_plain_answer_output(str(raw_content))
 
             result = await run_with_llm_failover(
                 scene="qa.generate_answer",
