@@ -31,9 +31,7 @@ const isFollowingQuestion = ref(false);
 const showAnswerEditor = ref(false);
 const answerContent = ref("");
 const submittingAnswer = ref(false);
-
-const answerIdParam = computed(() => route.params.answerId);
-const isAnswerDetailMode = computed(() => !!answerIdParam.value);
+const isAnswerDetailMode = computed(() => !!route.params.answerId);
 
 function normalizeHotspotText(raw: string | undefined | null): string {
   if (!raw) return "";
@@ -82,27 +80,27 @@ async function loadAnswers(reset = false) {
   }
 
   if (answersLoading.value) return;
-  if (isAnswerDetailMode.value && !hasMore.value) return;
+  if (!isAnswerDetailMode.value && !hasMore.value && !reset) return;
 
   answersLoading.value = true;
   try {
-    const limit = isAnswerDetailMode.value ? 50 : 1;
+    const limit = isAnswerDetailMode.value ? 1 : 20;
     const res = await getAnswerList(
       questionId,
-      isAnswerDetailMode.value ? cursor.value : undefined,
+      isAnswerDetailMode.value ? undefined : cursor.value,
       limit,
     );
 
     if (res.data.code === 200 && res.data.data) {
       const newAnswers = res.data.data.list || [];
       if (isAnswerDetailMode.value) {
-        answers.value = [...answers.value, ...newAnswers];
-        hasMore.value = res.data.data.has_more;
-        cursor.value = res.data.data.next_cursor;
-      } else {
         answers.value = newAnswers.slice(0, 1);
         hasMore.value = false;
         cursor.value = undefined;
+      } else {
+        answers.value = reset ? newAnswers : [...answers.value, ...newAnswers];
+        hasMore.value = res.data.data.has_more;
+        cursor.value = res.data.data.next_cursor;
       }
     }
   } catch (error) {
@@ -114,17 +112,7 @@ async function loadAnswers(reset = false) {
 
 const latestAnswer = computed(() => answers.value[0] || null);
 
-const topAnswer = computed(() => {
-  if (!isAnswerDetailMode.value) {
-    return latestAnswer.value;
-  }
-  return answers.value.find((a) => String(a.id) === String(answerIdParam.value)) || null;
-});
-
-const otherAnswers = computed(() => {
-  if (!isAnswerDetailMode.value || !topAnswer.value) return [];
-  return answers.value.filter((a) => a.id !== topAnswer.value!.id);
-});
+const topAnswer = computed(() => latestAnswer.value);
 
 async function handleReaction(action: ReactionAction) {
   if (!userStore.user?.token) {
@@ -209,13 +197,6 @@ async function submitAnswer() {
   }
 }
 
-function openAllAnswers() {
-  const questionId = Number(route.params.questionId);
-  const targetAnswer = latestAnswer.value || topAnswer.value;
-  if (!questionId || !targetAnswer) return;
-  router.push(`/question/${questionId}/answer/${targetAnswer.id}`);
-}
-
 function parseEventPayload(raw: any): Record<string, any> {
   const data = raw?.data;
   if (typeof data === "string") {
@@ -230,8 +211,6 @@ function parseEventPayload(raw: any): Record<string, any> {
 }
 
 useStreamChannel("questions", (message) => {
-  if (isAnswerDetailMode.value) return;
-
   const eventName = String(message?.event || "");
   if (eventName !== "answer_created") return;
 
@@ -263,7 +242,6 @@ watch(
   () => route.params.answerId,
   async () => {
     await loadAnswers(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
   },
 );
 </script>
@@ -367,15 +345,30 @@ watch(
       </div>
 
       <template v-if="!isAnswerDetailMode">
-        <div v-if="topAnswer" class="overflow-hidden rounded-sm bg-white shadow-sm">
-          <div class="border-b border-gray-100 px-4 py-3 text-sm text-gray-500 flex items-center justify-between">
-            <span>最新回答（自动热更新）</span>
-            <button class="secondary" @click="openAllAnswers">查看全部回答</button>
+        <div v-if="answers.length > 0" class="overflow-hidden rounded-sm bg-white shadow-sm">
+          <div class="border-b border-gray-100 px-4 py-3 text-sm text-gray-500">
+            全部回答（最新在前）
           </div>
-          <AnswerItem :answer="topAnswer" />
+          <div
+            v-for="answer in answers"
+            :key="answer.id"
+            class="border-b border-gray-100 last:border-b-0"
+          >
+            <AnswerItem :answer="answer" />
+          </div>
         </div>
         <div v-else class="rounded-sm bg-white py-12 text-center text-gray-400 shadow-sm">
           还没有回答，来写第一个回答吧！
+        </div>
+
+        <div v-if="hasMore" class="py-4 text-center">
+          <button
+            class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-gray-300 bg-white px-6 py-2 text-gray-600 font-medium hover:bg-gray-100 transition-colors"
+            :disabled="answersLoading"
+            @click="loadAnswers()"
+          >
+            {{ answersLoading ? "加载中..." : "加载更多" }}
+          </button>
         </div>
       </template>
 
@@ -385,39 +378,19 @@ watch(
           class="mb-3 block rounded-sm bg-white px-5 py-3 text-blue-600 shadow-sm hover:bg-gray-50 transition-colors"
         >
           <div class="flex items-center justify-between">
-            <span class="font-medium">返回“仅看最新回答”视图</span>
+            <span class="font-medium">返回问题页（查看全部回答）</span>
             <span class="i-mdi-chevron-right" />
           </div>
         </router-link>
 
-        <div v-if="topAnswer" class="mb-2 overflow-hidden border border-blue-100 rounded-sm shadow-sm">
+        <div v-if="topAnswer" class="overflow-hidden rounded-sm bg-white shadow-sm">
+          <div class="border-b border-gray-100 px-4 py-3 text-sm text-gray-500">
+            最新回答（自动热更新）
+          </div>
           <AnswerItem :answer="topAnswer" />
         </div>
-
-        <div v-if="otherAnswers.length > 0" class="my-4 flex items-center justify-center gap-4 text-sm text-gray-400">
-          <div class="h-px flex-1 bg-gray-200"></div>
-          <span class="px-2">其他回答</span>
-          <div class="h-px flex-1 bg-gray-200"></div>
-        </div>
-
-        <div v-if="otherAnswers.length > 0" class="space-y-2 pb-4">
-          <div
-            v-for="answer in otherAnswers"
-            :key="answer.id"
-            class="overflow-hidden rounded-sm shadow-sm hover:shadow-md transition-shadow"
-          >
-            <AnswerItem :answer="answer" />
-          </div>
-        </div>
-
-        <div v-if="hasMore" class="text-center py-2">
-          <button
-            class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-gray-300 bg-white px-6 py-2 text-gray-600 font-medium hover:bg-gray-100 transition-colors"
-            :disabled="answersLoading"
-            @click="loadAnswers()"
-          >
-            {{ answersLoading ? "加载中..." : "加载更多" }}
-          </button>
+        <div v-else class="rounded-sm bg-white py-12 text-center text-gray-400 shadow-sm">
+          还没有回答，来写第一个回答吧！
         </div>
       </template>
     </template>
