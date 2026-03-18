@@ -1,1 +1,0 @@
-import{A as e}from"./index-CagfOnBe.js";const a="http://localhost:8001",o=e.create({baseURL:a,timeout:6e4,headers:{"Content-Type":"application/json"}});async function p(t){return(await o.post("/agent/optimize",t)).data}async function r(t){return(await o.post("/agent/playground",t)).data}export{p as o,r as p};
