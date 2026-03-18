@@ -1,0 +1,1 @@
+import{y as s}from"./index-BUYfp7aS.js";function a(e,r=10){return s.get("/answer/feed",{params:{cursor:e,limit:r}})}function i(e,r,t=10){return s.get("/answer/list",{params:{question_id:e,cursor:r,limit:t}})}function o(e){return s.post("/answer",e)}export{i as a,o as c,a as g};

@@ -91,78 +91,96 @@ async def run_with_llm_failover(
         if temperature_override is None
         else float(temperature_override)
     )
-    primary_llm = _build_llm(
-        model=primary_model,
-        api_base=primary_api_base,
-        api_key=primary_api_key,
+    mode = str(cfg.get("llm_failover_mode", "single")).strip().lower()
+    can_fallback = mode == "dual_fallback" and _has_secondary(cfg)
+
+    secondary_model = _to_str(cfg.get("llm_model_secondary", ""))
+    secondary_api_base = _to_str(cfg.get("openai_api_base_secondary", ""))
+    secondary_api_key = _to_str(cfg.get("openai_api_key_secondary", ""))
+    secondary_temperature = (
+        _to_float(cfg.get("llm_temperature_secondary"), settings.llm_temperature)
+        if temperature_override is None
+        else float(temperature_override)
+    )
+
+    # Requested behavior: for creator flow, try "secondary" first, then "primary".
+    creator_prefers_secondary = scene.startswith("creator.")
+    first_is_secondary = creator_prefers_secondary and can_fallback
+
+    first_model = secondary_model if first_is_secondary else primary_model
+    first_api_base = secondary_api_base if first_is_secondary else primary_api_base
+    first_api_key = secondary_api_key if first_is_secondary else primary_api_key
+    first_temperature = secondary_temperature if first_is_secondary else primary_temperature
+
+    fallback_model = primary_model if first_is_secondary else secondary_model
+    fallback_api_base = primary_api_base if first_is_secondary else secondary_api_base
+    fallback_api_key = primary_api_key if first_is_secondary else secondary_api_key
+    fallback_temperature = primary_temperature if first_is_secondary else secondary_temperature
+
+    first_llm = _build_llm(
+        model=first_model,
+        api_base=first_api_base,
+        api_key=first_api_key,
         max_tokens=max_tokens,
-        temperature=primary_temperature,
+        temperature=first_temperature,
     )
 
     try:
-        return await runner(primary_llm)
-    except Exception as primary_error:
-        primary_error_text = _safe_error_text(primary_error)
-        mode = str(cfg.get("llm_failover_mode", "single")).strip().lower()
-        can_fallback = mode == "dual_fallback" and _has_secondary(cfg)
+        return await runner(first_llm)
+    except Exception as first_error:
+        first_error_text = _safe_error_text(first_error)
         if not can_fallback:
             logger.error(
                 "Primary LLM failed without fallback: scene=%s model=%s base=%s error=%s",
                 scene,
-                primary_model,
-                primary_api_base,
-                primary_error_text,
+                first_model,
+                first_api_base,
+                first_error_text,
             )
             raise RuntimeError(
-                f"primary llm failed (model={primary_model}, base={primary_api_base}): {primary_error_text}"
-            ) from primary_error
+                f"primary llm failed (model={first_model}, base={first_api_base}): {first_error_text}"
+            ) from first_error
 
-        secondary_model = _to_str(cfg.get("llm_model_secondary", ""))
-        secondary_temperature = (
-            _to_float(cfg.get("llm_temperature_secondary"), settings.llm_temperature)
-            if temperature_override is None
-            else float(temperature_override)
-        )
-        secondary_llm = _build_llm(
-            model=secondary_model,
-            api_base=_to_str(cfg.get("openai_api_base_secondary", "")),
-            api_key=_to_str(cfg.get("openai_api_key_secondary", "")),
+        fallback_llm = _build_llm(
+            model=fallback_model,
+            api_base=fallback_api_base,
+            api_key=fallback_api_key,
             max_tokens=max_tokens,
-            temperature=secondary_temperature,
+            temperature=fallback_temperature,
         )
         try:
-            result = await runner(secondary_llm)
+            result = await runner(fallback_llm)
             await push_llm_alert(
                 scene=scene,
-                primary_model=primary_model,
-                secondary_model=secondary_model,
-                primary_error=primary_error_text,
+                primary_model=first_model,
+                secondary_model=fallback_model,
+                primary_error=first_error_text,
                 fallback_succeeded=True,
             )
             logger.warning(
                 "LLM failover triggered and recovered: scene=%s primary=%s secondary=%s error=%s",
                 scene,
-                primary_model,
-                secondary_model,
-                primary_error_text,
+                first_model,
+                fallback_model,
+                first_error_text,
             )
             return result
-        except Exception as secondary_error:
-            secondary_error_text = _safe_error_text(secondary_error)
+        except Exception as fallback_error:
+            fallback_error_text = _safe_error_text(fallback_error)
             await push_llm_alert(
                 scene=scene,
-                primary_model=primary_model,
-                secondary_model=secondary_model,
-                primary_error=primary_error_text,
+                primary_model=first_model,
+                secondary_model=fallback_model,
+                primary_error=first_error_text,
                 fallback_succeeded=False,
-                secondary_error=secondary_error_text,
+                secondary_error=fallback_error_text,
             )
             logger.error(
                 "LLM failover failed: scene=%s primary=%s secondary=%s primary_error=%s secondary_error=%s",
                 scene,
-                primary_model,
-                secondary_model,
-                primary_error_text,
-                secondary_error_text,
+                first_model,
+                fallback_model,
+                first_error_text,
+                fallback_error_text,
             )
             raise

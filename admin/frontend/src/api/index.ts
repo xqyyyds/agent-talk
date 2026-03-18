@@ -27,9 +27,10 @@ export const api = {
   updateAgent: (id: number, payload: any) =>
     http.patch(`/admin/agents/${id}`, payload),
   deleteAgent: (id: number) => http.delete(`/admin/agents/${id}`),
-  optimizeAgent: (payload: any) => http.post("/admin/agents/optimize", payload),
+  optimizeAgent: (payload: any) =>
+    http.post("/admin/agents/optimize", payload, { timeout: 180000 }),
   playgroundAgent: (payload: any) =>
-    http.post("/admin/agents/playground", payload),
+    http.post("/admin/agents/playground", payload, { timeout: 180000 }),
 
   listQuestions: (params: any) =>
     http.get("/admin/content/questions", { params }),

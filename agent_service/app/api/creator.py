@@ -3,6 +3,7 @@ Agent creator APIs: optimize prompt and playground chat.
 """
 
 import logging
+import re
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
@@ -41,6 +42,42 @@ class PlaygroundRequest(BaseModel):
 class PlaygroundResponse(BaseModel):
     code: int
     data: dict
+
+
+def _strip_md_fence(text: str) -> str:
+    s = (text or "").strip()
+    s = re.sub(r"^```[a-zA-Z0-9_-]*\s*", "", s)
+    s = re.sub(r"\s*```$", "", s)
+    return s.strip()
+
+
+def _first_sentence(text: str, default: str) -> str:
+    cleaned = _strip_md_fence(text)
+    if not cleaned:
+        return default
+    first = re.split(r"[。\n\r]", cleaned, maxsplit=1)[0].strip()
+    return first or default
+
+
+def _coerce_blueprint_from_text(req: OptimizeRequest, text: str) -> AgentMetaBlueprint:
+    """
+    Some models (e.g. GLM) may return markdown prose instead of strict JSON.
+    Build a valid blueprint from raw text to keep optimize endpoint available.
+    """
+    raw = _strip_md_fence(text)
+    style_rules = [
+        f"保持{req.style_tag}风格，不要官腔。",
+        "多用第一人称，像真实社区用户发言。",
+        "先给观点，再给1-2个具体理由。",
+    ]
+    return AgentMetaBlueprint(
+        expanded_persona=_first_sentence(raw, f"我是{req.name}，{req.headline}。{req.bio}")[:180],
+        cognitive_bias_reasoning=f"我倾向于{req.bias}，因为这符合我长期观察到的现实反馈。",
+        speaking_style_rules=style_rules,
+        interaction_goal="给出清晰、可信、有人味的观点，帮助读者形成判断。",
+        opening_strategy="开场先亮明立场，再用一个具体情境承接。",
+        expressiveness_rule=f"回复模式为 {req.reply_mode}，按该模式控制篇幅与表达力度。",
+    )
 
 
 def _build_system_prompt(
@@ -109,16 +146,23 @@ async def optimize_agent_prompt(req: OptimizeRequest):
 
     try:
         async def _invoke(llm):
-            chain = (
-                ChatPromptTemplate.from_messages(
-                    [
-                        ("system", "你是一位专业的 Prompt 工程师。"),
-                        ("human", prompts.AGENT_OPTIMIZER_META_PROMPT),
-                    ]
-                )
-                | llm.with_structured_output(AgentMetaBlueprint)
+            prompt_tmpl = ChatPromptTemplate.from_messages(
+                [
+                    ("system", "你是一位专业的 Prompt 工程师。"),
+                    ("human", prompts.AGENT_OPTIMIZER_META_PROMPT),
+                ]
             )
-            return await chain.ainvoke(payload)
+            structured_chain = prompt_tmpl | llm.with_structured_output(AgentMetaBlueprint)
+            try:
+                return await structured_chain.ainvoke(payload)
+            except Exception as parse_error:
+                # Some providers output markdown/text instead of strict JSON.
+                # This is a recoverable path, so keep it low-noise.
+                logger.info("creator.optimize structured parse fallback activated")
+                raw_chain = prompt_tmpl | llm
+                raw_result = await raw_chain.ainvoke(payload)
+                raw_content = raw_result.content if hasattr(raw_result, "content") else str(raw_result)
+                return _coerce_blueprint_from_text(req, str(raw_content))
 
         output: AgentMetaBlueprint = await run_with_llm_failover(
             scene="creator.optimize",
