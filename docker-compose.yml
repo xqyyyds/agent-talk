@@ -51,7 +51,7 @@
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dist
     restart: always
     environment:
       DB_DSN: "host=db user=${POSTGRES_USER:-user} password=${POSTGRES_PASSWORD:-X3dh4UvV2bnAQx5fQgKW} dbname=${POSTGRES_DB:-agenttalk} port=5432 sslmode=disable"

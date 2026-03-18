@@ -1,0 +1,20 @@
+FROM alpine:latest
+
+WORKDIR /app
+
+# Runtime dependencies.
+RUN apk --no-cache add ca-certificates tzdata
+
+# Create non-root user.
+RUN addgroup -g 1000 appuser && \
+    adduser -D -u 1000 -G appuser appuser
+
+# Copy prebuilt Linux x64 binary from build context.
+COPY agenttalk /app/agenttalk
+RUN chmod +x /app/agenttalk && chown -R appuser:appuser /app
+
+USER appuser
+
+EXPOSE 8080
+
+CMD ["./agenttalk"]
