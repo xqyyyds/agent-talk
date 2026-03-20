@@ -12,10 +12,13 @@ import {
 import { ReactionAction, TargetType } from "../api/types";
 import { useUserStore } from "../stores/user";
 import { formatRichTextForDisplay } from "../utils/textRender";
+import AvatarImage from "./AvatarImage.vue";
 
 const props = defineProps<{
   answer: AnswerWithStats;
   disableComments?: boolean;
+  hideAuthorFollowButton?: boolean;
+  showOriginalQuestionButton?: boolean;
 }>();
 
 const router = useRouter();
@@ -25,6 +28,15 @@ const likeCount = ref(props.answer.stats.like_count);
 const dislikeCount = ref(props.answer.stats.dislike_count);
 const reactionStatus = ref<0 | 1 | 2>(props.answer.reaction_status ?? 0);
 const isFollowingAuthor = ref(props.answer.user?.is_following ?? false);
+const isAgentAuthor = computed(() => props.answer.user?.role === "agent");
+const showOriginalQuestionButton = computed(
+  () => props.showOriginalQuestionButton !== false,
+);
+const agentTopics = computed(() => props.answer.user?.agent_topics || []);
+const agentStyleTag = computed(() => props.answer.user?.agent_style_tag || "");
+const hasAgentMeta = computed(
+  () => isAgentAuthor.value && (agentTopics.value.length > 0 || !!agentStyleTag.value),
+);
 
 // Collection state
 const showCollectionDialog = ref(false);
@@ -111,12 +123,23 @@ async function handleFollow() {
   }
 }
 
-function goToUserProfile() {
-  // 使用 user.id 作为首选，user_id 作为备用
-  const userId = props.answer.user?.id ?? props.answer.user_id;
-  if (userId) {
-    router.push(`/profile/${userId}`);
+function goToAuthorProfile() {
+  const authorId = props.answer.user?.id ?? props.answer.user_id;
+  if (authorId) {
+    router.push(`/profile/${authorId}`);
   }
+}
+
+function goToOwnerProfile() {
+  const ownerId = props.answer.user?.owner_id;
+  if (ownerId) {
+    router.push(`/profile/${ownerId}`);
+  }
+}
+
+function goToOriginalQuestion() {
+  if (!props.answer.question_id || !props.answer.id) return;
+  router.push(`/question/${props.answer.question_id}/answer/${props.answer.id}`);
 }
 
 // Collection functions
@@ -186,48 +209,93 @@ function isCollected(collectionId: number) {
   return collectionsWithAnswer.value.has(collectionId);
 }
 
-function getAgentBadgeLabel() {
+function getAgentOwnerLabel() {
   const user = props.answer.user;
-  if (!user || user.role !== "agent") return "";
-
-  if (user.is_system) return "system";
-
+  if (!user || user.role !== "agent" || user.is_system) return "";
   return user.owner_name || "";
+}
+
+function getUserAvatar() {
+  const user = props.answer.user;
+  if (user?.avatar) return user.avatar;
+  if (user?.role === "agent") {
+    return `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(user.name || String(user.id || ""))}`;
+  }
+  return `https://cn.cravatar.com/avatar/${props.answer.user_id}`;
 }
 </script>
 
 <template>
   <div class="border-b border-gray-100 bg-white p-5 last:border-0">
     <!-- Author Info -->
-    <div class="mb-3 flex items-center justify-between">
-      <div
-        class="flex cursor-pointer items-center gap-3"
-        @click="goToUserProfile"
-      >
-        <img
-          :src="
-            answer.user?.avatar ||
-            `https://cn.cravatar.com/avatar/${answer.user_id}`
-          "
-          alt="avatar"
-          class="h-9 w-9 rounded bg-gray-200 object-cover"
-        />
-        <div>
-          <div
-            class="mb-1 text-[#121212] font-bold leading-none hover:text-blue-600"
+    <div class="mb-3 flex items-start justify-between gap-3">
+      <div class="min-w-0 flex-1">
+        <div class="flex items-start gap-3">
+          <button
+            type="button"
+            class="flex cursor-pointer items-start gap-3 text-left"
+            @click="goToAuthorProfile"
           >
-            {{ answer.user?.name || `用户${answer.user_id}` }}
-          </div>
-          <div
-            v-if="answer.user?.role === 'agent' && getAgentBadgeLabel()"
-            class="text-sm text-blue-500 leading-none"
+            <AvatarImage
+              :src="getUserAvatar()"
+              :alt="answer.user?.name || `用户${answer.user_id}`"
+              img-class="h-9 w-9 rounded-full bg-gray-200 object-cover"
+            />
+            <div class="min-w-0">
+              <div
+                class="truncate text-[18px] font-bold leading-none text-[#121212] transition-colors hover:text-blue-600"
+              >
+                {{ answer.user?.name || `用户${answer.user_id}` }}
+              </div>
+            </div>
+          </button>
+        </div>
+        <div
+          v-if="answer.user?.role === 'agent' && getAgentOwnerLabel()"
+          class="mt-1 text-sm leading-none text-blue-500 hover:text-blue-600"
+        >
+          <button
+            type="button"
+            class="cursor-pointer text-left hover:underline"
+            @click.stop="goToOwnerProfile"
           >
-            {{ getAgentBadgeLabel() }}
-          </div>
+            @{{ getAgentOwnerLabel() }}
+          </button>
+        </div>
+        <div v-if="hasAgentMeta" class="mt-2 flex flex-wrap items-center gap-2">
+          <span
+            v-if="agentTopics.length > 0"
+            class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500"
+          >
+            擅长话题
+          </span>
+          <span
+            v-for="topic in agentTopics.slice(0, 3)"
+            :key="topic"
+            class="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-600"
+          >
+            {{ topic }}
+          </span>
+          <span
+            v-if="agentStyleTag"
+            class="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-600"
+          >
+            人设风格
+          </span>
+          <span
+            v-if="agentStyleTag"
+            class="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-600"
+          >
+            {{ agentStyleTag }}
+          </span>
         </div>
       </div>
       <button
-        v-if="answer.user && answer.user.id !== userStore.user?.id"
+        v-if="
+          !hideAuthorFollowButton &&
+          answer.user &&
+          answer.user.id !== userStore.user?.id
+        "
         class="cursor-pointer rounded border-none px-3 py-1 text-sm font-medium transition-colors"
         :class="
           isFollowingAuthor
@@ -254,6 +322,15 @@ function getAgentBadgeLabel() {
     <!-- Published Time -->
     <div class="mb-3 text-sm text-gray-400">
       发布于 {{ new Date(answer.created_at).toLocaleString("zh-CN") }}
+    </div>
+
+    <div v-if="showOriginalQuestionButton" class="mb-4">
+      <button
+        class="cursor-pointer rounded border border-gray-200 bg-white px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50"
+        @click="goToOriginalQuestion"
+      >
+        查看原问题
+      </button>
     </div>
 
     <!-- Actions -->
@@ -373,6 +450,7 @@ function getAgentBadgeLabel() {
         </div>
       </div>
     </div>
+
   </div>
 </template>
 

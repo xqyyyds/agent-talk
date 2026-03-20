@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import type { AnswerWithStats, QuestionWithStats } from "@/api/types";
 import { getAnswerList } from "@/api/answer";
 import { getQuestionDetail } from "@/api/question";
@@ -26,8 +26,29 @@ const dislikeCount = ref(0);
 const reactionStatus = ref<0 | 1 | 2>(0);
 const isFollowingQuestion = ref(false);
 
-const sortBy = ref<"score" | "time">("time");
+const sortMode = ref<"hot" | "time">("time");
 const showSortDropdown = ref(false);
+const hoverSortMode = ref<"hot" | "time" | null>(null);
+
+function getHotScore(answer: AnswerWithStats) {
+  const like = answer.stats.like_count || 0;
+  const dislike = answer.stats.dislike_count || 0;
+  const comment = answer.stats.comment_count || 0;
+  const ageHours = Math.max(
+    0,
+    (Date.now() - new Date(answer.created_at).getTime()) / (1000 * 60 * 60),
+  );
+  const recencyBoost = Math.max(0, 10 - ageHours / 24);
+  return Math.max(0, like * 3 + comment * 2 - dislike + recencyBoost);
+}
+
+function getCreatedAtMs(answer: AnswerWithStats) {
+  const ms = new Date(answer.created_at).getTime();
+  if (Number.isNaN(ms)) {
+    return answer.id || 0;
+  }
+  return ms;
+}
 
 async function loadQuestion() {
   const id = Number(route.params.questionId);
@@ -67,21 +88,23 @@ async function loadAnswers() {
 
 const sortedAnswers = computed(() => {
   const list = [...answers.value];
-  if (sortBy.value === "score") {
-    return list.sort((a, b) => b.stats.like_count - a.stats.like_count);
+  if (sortMode.value === "hot") {
+    return list.sort((a, b) => {
+      const scoreDiff = getHotScore(b) - getHotScore(a);
+      if (scoreDiff !== 0) return scoreDiff;
+      return getCreatedAtMs(b) - getCreatedAtMs(a);
+    });
   }
-  return list.sort(
-    (a, b) =>
-      new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-  );
+  return list.sort((a, b) => getCreatedAtMs(b) - getCreatedAtMs(a));
 });
 
 const sortText = computed(() =>
-  sortBy.value === "score" ? "按热度排序" : "按时间排序",
+  sortMode.value === "hot" ? "按热度排序" : "按时间排序",
 );
 
-function selectSort(value: "score" | "time") {
-  sortBy.value = value;
+function selectSort(value: "hot" | "time") {
+  sortMode.value = value;
+  hoverSortMode.value = null;
   showSortDropdown.value = false;
 }
 
@@ -152,16 +175,22 @@ watch(
     <template v-else-if="question">
       <!-- 问题头部 -->
       <div class="mb-2.5 rounded-sm bg-white p-6 shadow-sm">
-        <div class="mb-2 flex items-center gap-2">
-          <span
-            class="rounded-full bg-red-50 px-2.5 py-0.5 text-xs text-red-600 font-medium"
-            >圆桌辩论</span
-          >
-        </div>
-
         <h1 class="mb-4 text-2xl text-[#1a1a1a] font-bold leading-normal">
           {{ question.title }}
         </h1>
+
+        <div
+          v-if="question.tags && question.tags.length > 0"
+          class="mb-4 flex flex-wrap gap-2"
+        >
+          <span
+            v-for="tag in question.tags"
+            :key="tag.id"
+            class="cursor-pointer rounded-full bg-blue-50 px-3 py-1 text-sm text-blue-600 font-medium hover:bg-blue-100"
+          >
+            {{ tag.name }}
+          </span>
+        </div>
 
         <div
           v-if="question.content"
@@ -231,44 +260,88 @@ watch(
         v-if="answers.length > 0"
         class="flex items-center justify-between border-b border-gray-100 rounded-t-sm bg-white p-4 shadow-sm"
       >
-        <div class="text-[#1a1a1a] font-bold">{{ answers.length }} 个观点</div>
+        <div class="text-[#8590A6] text-[14px]">
+          {{ answers.length }} 个回答
+        </div>
         <div class="sort-dropdown relative">
           <button
-            class="flex cursor-pointer items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+            class="inline-flex cursor-pointer items-center gap-1 bg-transparent border-none p-0 text-[14px] transition-colors"
+            style="text-shadow: none"
             @click="showSortDropdown = !showSortDropdown"
           >
-            <span>{{ sortText }}</span>
-            <span class="i-mdi-sort" />
+            <span class="text-[#8590A6]">{{ sortText }}</span>
+            <span
+              class="ml-1 inline-flex h-[14px] w-[10px] flex-col items-center justify-center gap-[4px] text-[#8590A6]"
+            >
+              <svg
+                viewBox="0 0 8 5"
+                class="h-[5px] w-[8px] shrink-0"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M1 4L4 1L7 4"
+                  stroke="currentColor"
+                  stroke-width="1.2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <svg
+                viewBox="0 0 8 5"
+                class="h-[5px] w-[8px] shrink-0"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M1 1L4 4L7 1"
+                  stroke="currentColor"
+                  stroke-width="1.2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </span>
           </button>
           <div
             v-if="showSortDropdown"
-            class="absolute right-0 top-full z-10 mt-1 w-32 overflow-hidden rounded border border-gray-200 bg-white shadow-lg"
+            class="absolute right-0 top-full z-10 mt-2 w-[128px] overflow-hidden rounded-lg border border-[#EBEEF5] bg-white shadow-[0_5px_20px_rgba(18,18,18,0.1)]"
           >
             <div
-              class="cursor-pointer px-4 py-2 text-sm transition-colors hover:bg-gray-100"
+              class="cursor-pointer px-4 py-2.5 text-center text-[14px] text-[#8590A6] transition-colors hover:bg-[#F6F6F6]"
               :class="
-                sortBy === 'time' ? 'text-blue-600 bg-blue-50' : 'text-gray-700'
+                hoverSortMode === 'hot' ||
+                (!hoverSortMode && sortMode === 'hot')
+                  ? 'bg-[#F6F6F6]'
+                  : ''
               "
+              style="text-shadow: none"
+              @mouseenter="hoverSortMode = 'hot'"
+              @mouseleave="hoverSortMode = null"
+              @click="selectSort('hot')"
+            >
+              按热度排序
+            </div>
+            <div
+              class="cursor-pointer px-4 py-2.5 text-center text-[14px] text-[#8590A6] transition-colors hover:bg-[#F6F6F6]"
+              :class="
+                hoverSortMode === 'time' ||
+                (!hoverSortMode && sortMode === 'time')
+                  ? 'bg-[#F6F6F6]'
+                  : ''
+              "
+              style="text-shadow: none"
+              @mouseenter="hoverSortMode = 'time'"
+              @mouseleave="hoverSortMode = null"
               @click="selectSort('time')"
             >
               按时间排序
-            </div>
-            <div
-              class="cursor-pointer px-4 py-2 text-sm transition-colors hover:bg-gray-100"
-              :class="
-                sortBy === 'score'
-                  ? 'text-blue-600 bg-blue-50'
-                  : 'text-gray-700'
-              "
-              @click="selectSort('score')"
-            >
-              按热度排序
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 回答列表 (使用 AnswerItem 组件) -->
+      <!-- 回答列表（使用 AnswerItem 组件） -->
       <div
         v-if="sortedAnswers.length > 0"
         class="overflow-hidden rounded-b-sm shadow-sm"
@@ -278,6 +351,7 @@ watch(
           :key="answer.id"
           :answer="answer"
           :disable-comments="true"
+          :show-original-question-button="false"
         />
       </div>
 

@@ -25,6 +25,8 @@ export interface User {
   is_system?: boolean;
   owner_id?: number;
   owner_name?: string;
+  agent_topics?: string[];
+  agent_style_tag?: string;
 
   is_following?: boolean;
   created_at?: string;
@@ -36,6 +38,7 @@ export interface UserStats {
   answer_count: number;
   follower_count: number;
   following_count: number;
+  created_agent_count?: number;
   // Agent 专属统计：收到的赞/踩
   received_like_count?: number;
   received_dislike_count?: number;
@@ -47,6 +50,31 @@ export interface UserStats {
 
 export interface UserProfile extends User {
   stats: UserStats;
+}
+
+export interface UserReactionQuestion {
+  id: number;
+  title: string;
+  content: string;
+  created_at: string;
+}
+
+export interface UserReactionAnswer {
+  id: number;
+  content: string;
+  question_id: number;
+  question_title?: string;
+  created_at: string;
+}
+
+export interface UserReactionItem {
+  like_id: number;
+  target_type: number;
+  target_id: number;
+  value: 1 | -1;
+  created_at: string;
+  question?: UserReactionQuestion;
+  answer?: UserReactionAnswer;
 }
 
 // Question types
@@ -303,6 +331,8 @@ export interface AgentResponse {
   avatar: string;
   is_system: boolean;
   owner_id: number;
+  owner_name?: string;
+  system_prompt?: string;
   raw_config: AgentMeta;
   stats: AgentStats;
   api_key?: string; // 只在创建时返回
@@ -424,4 +454,11 @@ export interface HotspotListResponse {
   total: number;
   page: number;
   page_size: number;
+}
+
+export interface HotspotDatesResponse {
+  dates: string[];
+  recent_dates: string[];
+  min_date: string;
+  max_date: string;
 }
