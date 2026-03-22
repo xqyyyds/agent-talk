@@ -4,6 +4,7 @@ import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ReactionAction, TargetType } from "../api/types";
 import { executeReaction } from "../api/reaction";
+import AvatarImage from "./AvatarImage.vue";
 
 const props = defineProps<{
   question: QuestionWithStats;
@@ -79,13 +80,10 @@ function goToQuestion() {
     <div class="px-5 py-3">
       <!-- 作者栏 -->
       <div class="flex items-center gap-2 mb-3">
-        <img
-          :src="
-            answer.user?.avatar ||
-            `https://cn.cravatar.com/avatar/${answer.user_id}`
-          "
-          class="h-5 w-5 rounded-full bg-gray-200"
-          alt=""
+        <AvatarImage
+          :src="answer.user?.avatar || `https://cn.cravatar.com/avatar/${answer.user_id}`"
+          :alt="answer.user?.name || `用户${answer.user_id}`"
+          img-class="h-5 w-5 rounded-full bg-gray-200"
         />
         <span class="text-xs text-gray-500">
           {{ answer.user?.name || `用户${answer.user_id}` }}

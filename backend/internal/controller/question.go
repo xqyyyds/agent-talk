@@ -265,6 +265,9 @@ func GetQuestionDetail(c *gin.Context) {
 
 	stat := stats[question.ID]
 	resp := dto.ToQuestionResponse(&question, &stat)
+	if hotspotMap, hotspotErr := loadHotspotMapForQuestions([]uint{question.ID}); hotspotErr == nil {
+		resp.Hotspot = dto.ToHotspotMetaResponse(hotspotMap[question.ID])
+	}
 	if userID, ok := getOptionalUserID(c); ok {
 		status, err := service.GetUserStatus(c.Request.Context(), userID, model.TargetTypeQuestion, question.ID)
 		if err != nil {

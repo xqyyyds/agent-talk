@@ -90,8 +90,8 @@ func RegisterHandler(c *gin.Context) {
 	// 使用 JWT 生成 token
 	claims := jwt.MapClaims{
 		middleware.IdentityKey: float64(newUser.ID),
-		"role":                string(newUser.Role),
-		"exp":                 expireTime.Unix(),
+		"role":                 string(newUser.Role),
+		"exp":                  expireTime.Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(os.Getenv("JWT_SECRET_KEY")))
@@ -186,9 +186,35 @@ func RefreshTokenDoc(c *gin.Context) {
 }
 
 type UpdateProfileRequest struct {
-	Handle string `json:"handle" binding:"omitempty,min=3,max=50"`
-	Name   string `json:"name" binding:"omitempty,max=100"`
-	Avatar string `json:"avatar"`
+	Handle   string `json:"handle" binding:"omitempty,min=3,max=50"`
+	Name     string `json:"name" binding:"omitempty,max=100"`
+	Avatar   string `json:"avatar"`
+	Password string `json:"password" binding:"omitempty,min=6,max=100"`
+}
+
+type UserReactionQuestion struct {
+	ID        uint      `json:"id"`
+	Title     string    `json:"title"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type UserReactionAnswer struct {
+	ID            uint      `json:"id"`
+	Content       string    `json:"content"`
+	QuestionID    uint      `json:"question_id"`
+	QuestionTitle string    `json:"question_title,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+type UserReactionItem struct {
+	LikeID     uint                  `json:"like_id"`
+	TargetType uint8                 `json:"target_type"`
+	TargetID   uint                  `json:"target_id"`
+	Value      int                   `json:"value"`
+	CreatedAt  time.Time             `json:"created_at"`
+	Question   *UserReactionQuestion `json:"question,omitempty"`
+	Answer     *UserReactionAnswer   `json:"answer,omitempty"`
 }
 
 // GetUserProfile 获取用户主页信息
@@ -220,49 +246,99 @@ func GetUserProfile(c *gin.Context) {
 	database.DB.Model(&model.Answer{}).Where("user_id = ?", uid).Count(&stats.AnswerCount)
 	database.DB.Model(&model.Follow{}).Where("target_type = ? AND target_id = ?", model.TargetTypeUser, uid).Count(&stats.FollowerCount)
 	database.DB.Model(&model.Follow{}).Where("user_id = ? AND target_type = ?", uid, model.TargetTypeUser).Count(&stats.FollowingCount)
+	database.DB.Model(&model.User{}).Where("role = ? AND owner_id = ?", model.RoleAgent, uid).Count(&stats.CreatedAgentCount)
 
-	// Agent 专属：计算收到的赞/踩总数（问题 + 回答）
+	// Agent 专属：从 likes 表反推收到的赞/踩，兼容旧库（即使 Redis 统计还未回填）
 	if user.Role == model.RoleAgent {
-		// 获取用户所有问题的ID
-		var questionIDs []uint
-		database.DB.Model(&model.Question{}).Where("user_id = ?", uid).Pluck("id", &questionIDs)
+		var questionLikes int64
+		var answerLikes int64
+		var questionDislikes int64
+		var answerDislikes int64
 
-		// 获取用户所有回答的ID
+		database.DB.Raw(`
+			SELECT COUNT(*)
+			FROM likes l
+			INNER JOIN questions q ON q.id = l.target_id
+			WHERE l.deleted_at IS NULL
+			  AND l.target_type = ?
+			  AND l.value = ?
+			  AND q.user_id = ?
+		`, model.TargetTypeQuestion, 1, uid).Scan(&questionLikes)
+		database.DB.Raw(`
+			SELECT COUNT(*)
+			FROM likes l
+			INNER JOIN answers a ON a.id = l.target_id
+			WHERE l.deleted_at IS NULL
+			  AND l.target_type = ?
+			  AND l.value = ?
+			  AND a.user_id = ?
+		`, model.TargetTypeAnswer, 1, uid).Scan(&answerLikes)
+		database.DB.Raw(`
+			SELECT COUNT(*)
+			FROM likes l
+			INNER JOIN questions q ON q.id = l.target_id
+			WHERE l.deleted_at IS NULL
+			  AND l.target_type = ?
+			  AND l.value = ?
+			  AND q.user_id = ?
+		`, model.TargetTypeQuestion, -1, uid).Scan(&questionDislikes)
+		database.DB.Raw(`
+			SELECT COUNT(*)
+			FROM likes l
+			INNER JOIN answers a ON a.id = l.target_id
+			WHERE l.deleted_at IS NULL
+			  AND l.target_type = ?
+			  AND l.value = ?
+			  AND a.user_id = ?
+		`, model.TargetTypeAnswer, -1, uid).Scan(&answerDislikes)
+
+		stats.ReceivedLikeCount = questionLikes + answerLikes
+		stats.ReceivedDislikeCount = questionDislikes + answerDislikes
+
+		// Redis 统计容错：历史库可能存在“Redis 有计数、likes 明细缺失”的情况，
+		// 这里用 max(DB聚合, Redis聚合) 兜底，保证主页头部与列表卡片观感一致。
+		var questionIDs []uint
 		var answerIDs []uint
+		database.DB.Model(&model.Question{}).Where("user_id = ?", uid).Pluck("id", &questionIDs)
 		database.DB.Model(&model.Answer{}).Where("user_id = ?", uid).Pluck("id", &answerIDs)
 
-		// 使用 Redis 批量获取统计数据
-		ctx := c.Request.Context()
-
-		// 获取问题的统计
+		var redisLikeTotal int64
+		var redisDislikeTotal int64
 		if len(questionIDs) > 0 {
-			questionStats, err := service.BatchGetStats(ctx, model.TargetTypeQuestion, questionIDs)
-			if err == nil {
-				for _, s := range questionStats {
-					stats.ReceivedLikeCount += s.LikeCount
-					stats.ReceivedDislikeCount += s.DislikeCount
+			if qStats, statErr := service.BatchGetStats(c.Request.Context(), model.TargetTypeQuestion, questionIDs); statErr == nil {
+				for _, st := range qStats {
+					redisLikeTotal += st.LikeCount
+					redisDislikeTotal += st.DislikeCount
+				}
+			}
+		}
+		if len(answerIDs) > 0 {
+			if aStats, statErr := service.BatchGetStats(c.Request.Context(), model.TargetTypeAnswer, answerIDs); statErr == nil {
+				for _, st := range aStats {
+					redisLikeTotal += st.LikeCount
+					redisDislikeTotal += st.DislikeCount
 				}
 			}
 		}
 
-		// 获取回答的统计
-		if len(answerIDs) > 0 {
-			answerStats, err := service.BatchGetStats(ctx, model.TargetTypeAnswer, answerIDs)
-			if err == nil {
-				for _, s := range answerStats {
-					stats.ReceivedLikeCount += s.LikeCount
-					stats.ReceivedDislikeCount += s.DislikeCount
-				}
-			}
+		if redisLikeTotal > stats.ReceivedLikeCount {
+			stats.ReceivedLikeCount = redisLikeTotal
+		}
+		if redisDislikeTotal > stats.ReceivedDislikeCount {
+			stats.ReceivedDislikeCount = redisDislikeTotal
 		}
 	}
 
 	// 真人专属：计算给出的赞/踩数、关注的问题数
 	if user.Role == model.RoleUser || user.Role == model.RoleAdmin {
 		// 计算给出的点赞数
-		database.DB.Model(&model.Like{}).Where("user_id = ? AND value = 1", uid).Count(&stats.GivenLikeCount)
+		database.DB.Model(&model.Like{}).
+			Where("user_id = ? AND value = ? AND (target_type = ? OR target_type = ?)", uid, 1, model.TargetTypeQuestion, model.TargetTypeAnswer).
+			Count(&stats.GivenLikeCount)
 		// 计算给出的点踩数
-		database.DB.Model(&model.Like{}).Where("user_id = ? AND value = -1", uid).Count(&stats.GivenDislikeCount)
+		database.DB.Model(&model.Like{}).
+			Where("user_id = ? AND value = ? AND (target_type = ? OR target_type = ?)", uid, -1, model.TargetTypeQuestion, model.TargetTypeAnswer).
+			Count(&stats.GivenDislikeCount)
 		// 计算关注的问题数
 		database.DB.Model(&model.Follow{}).Where("user_id = ? AND target_type = ?", uid, model.TargetTypeQuestion).Count(&stats.FollowedQuestionCount)
 	}
@@ -549,6 +625,283 @@ func GetUserAnswers(c *gin.Context) {
 	})
 }
 
+// GetUserFollowing 获取指定用户的关注列表（用户/问题）
+func GetUserFollowing(c *gin.Context) {
+	id := c.Param("id")
+
+	var user model.User
+	if err := database.DB.First(&user, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, Response{Code: 404, Message: "用户不存在"})
+		return
+	}
+
+	targetType, _ := strconv.Atoi(c.DefaultQuery("target_type", "4"))
+	if targetType != int(model.TargetTypeUser) && targetType != int(model.TargetTypeQuestion) {
+		c.JSON(http.StatusBadRequest, Response{Code: 400, Message: "target_type 仅支持 1 或 4"})
+		return
+	}
+
+	cursor, _ := strconv.ParseUint(c.Query("cursor"), 10, 64)
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+
+	uid, _ := strconv.ParseUint(id, 10, 64)
+	var follows []model.Follow
+	query := database.DB.Where("user_id = ? AND target_type = ?", uid, targetType)
+	if cursor > 0 {
+		query = query.Where("id < ?", cursor)
+	}
+
+	if err := query.Order("id DESC").Limit(limit + 1).Find(&follows).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, Response{Code: 500, Message: "查询失败"})
+		return
+	}
+
+	hasMore := len(follows) > limit
+	if hasMore {
+		follows = follows[:limit]
+	}
+
+	var nextCursor uint
+	if len(follows) > 0 {
+		nextCursor = follows[len(follows)-1].ID
+	}
+
+	list := loadFollowTargets(follows, uint8(targetType))
+	c.JSON(http.StatusOK, Response{
+		Code: 200,
+		Data: dto.PaginatedResponse{
+			List:       list,
+			NextCursor: nextCursor,
+			HasMore:    hasMore,
+		},
+	})
+}
+
+// GetUserFollowers 获取指定用户的粉丝列表
+func GetUserFollowers(c *gin.Context) {
+	id := c.Param("id")
+
+	var user model.User
+	if err := database.DB.First(&user, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, Response{Code: 404, Message: "用户不存在"})
+		return
+	}
+
+	cursor, _ := strconv.ParseUint(c.Query("cursor"), 10, 64)
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+
+	uid, _ := strconv.ParseUint(id, 10, 64)
+	var follows []model.Follow
+	query := database.DB.Where("target_type = ? AND target_id = ?", model.TargetTypeUser, uid)
+	if cursor > 0 {
+		query = query.Where("id < ?", cursor)
+	}
+
+	if err := query.Order("id DESC").Limit(limit + 1).Find(&follows).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, Response{Code: 500, Message: "查询失败"})
+		return
+	}
+
+	hasMore := len(follows) > limit
+	if hasMore {
+		follows = follows[:limit]
+	}
+
+	var nextCursor uint
+	if len(follows) > 0 {
+		nextCursor = follows[len(follows)-1].ID
+	}
+
+	userIDs := make([]uint, len(follows))
+	for i, f := range follows {
+		userIDs[i] = f.UserID
+	}
+
+	var users []model.User
+	if len(userIDs) > 0 {
+		database.DB.Where("id IN ?", userIDs).Find(&users)
+	}
+	userMap := make(map[uint]model.User, len(users))
+	for _, u := range users {
+		userMap[u.ID] = u
+	}
+
+	list := make([]map[string]interface{}, len(follows))
+	for i, f := range follows {
+		u := userMap[f.UserID]
+		list[i] = map[string]interface{}{
+			"follow":   dto.ToFollowResponse(&f),
+			"follower": dto.ToUserResponse(&u),
+		}
+	}
+
+	c.JSON(http.StatusOK, Response{
+		Code: 200,
+		Data: dto.PaginatedResponse{
+			List:       list,
+			NextCursor: nextCursor,
+			HasMore:    hasMore,
+		},
+	})
+}
+
+// GetUserReactions 获取用户的点赞/点踩列表
+// mode=given: 我点过的赞/踩；mode=received: 我收到的赞/踩（用于 Agent 主页）
+func GetUserReactions(c *gin.Context) {
+	id := c.Param("id")
+
+	var user model.User
+	if err := database.DB.First(&user, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, Response{Code: 404, Message: "用户不存在"})
+		return
+	}
+
+	mode := c.DefaultQuery("mode", "given")
+	if mode != "given" && mode != "received" {
+		c.JSON(http.StatusBadRequest, Response{Code: 400, Message: "mode 仅支持 given 或 received"})
+		return
+	}
+
+	value, err := strconv.Atoi(c.DefaultQuery("value", "1"))
+	if err != nil || (value != 1 && value != -1) {
+		c.JSON(http.StatusBadRequest, Response{Code: 400, Message: "value 仅支持 1 或 -1"})
+		return
+	}
+
+	cursor, _ := strconv.ParseUint(c.Query("cursor"), 10, 64)
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+
+	uid, _ := strconv.ParseUint(id, 10, 64)
+	query := database.DB.Model(&model.Like{}).Where("value = ?", value)
+	if mode == "given" {
+		query = query.Where(
+			"user_id = ? AND (target_type = ? OR target_type = ?)",
+			uid,
+			model.TargetTypeQuestion,
+			model.TargetTypeAnswer,
+		)
+	} else {
+		questionSub := database.DB.Model(&model.Question{}).Select("id").Where("user_id = ?", uid)
+		answerSub := database.DB.Model(&model.Answer{}).Select("id").Where("user_id = ?", uid)
+		query = query.Where(
+			"(target_type = ? AND target_id IN (?)) OR (target_type = ? AND target_id IN (?))",
+			model.TargetTypeQuestion, questionSub,
+			model.TargetTypeAnswer, answerSub,
+		)
+	}
+
+	if cursor > 0 {
+		query = query.Where("id < ?", cursor)
+	}
+
+	var likes []model.Like
+	if err := query.Order("id DESC").Limit(limit + 1).Find(&likes).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, Response{Code: 500, Message: "查询失败"})
+		return
+	}
+
+	hasMore := len(likes) > limit
+	if hasMore {
+		likes = likes[:limit]
+	}
+
+	var nextCursor uint
+	if len(likes) > 0 {
+		nextCursor = likes[len(likes)-1].ID
+	}
+
+	questionIDs := make([]uint, 0)
+	answerIDs := make([]uint, 0)
+	for _, like := range likes {
+		if like.TargetType == model.TargetTypeQuestion {
+			questionIDs = append(questionIDs, like.TargetID)
+		} else if like.TargetType == model.TargetTypeAnswer {
+			answerIDs = append(answerIDs, like.TargetID)
+		}
+	}
+
+	var questions []model.Question
+	if len(questionIDs) > 0 {
+		database.DB.Where("id IN ?", questionIDs).Find(&questions)
+	}
+	questionMap := make(map[uint]model.Question, len(questions))
+	for _, q := range questions {
+		questionMap[q.ID] = q
+	}
+
+	type answerWithQuestion struct {
+		ID            uint
+		Content       string
+		QuestionID    uint
+		CreatedAt     time.Time
+		QuestionTitle string
+	}
+	answerRows := make([]answerWithQuestion, 0)
+	if len(answerIDs) > 0 {
+		database.DB.Table("answers").
+			Select("answers.id, answers.content, answers.question_id, answers.created_at, questions.title AS question_title").
+			Joins("LEFT JOIN questions ON questions.id = answers.question_id").
+			Where("answers.id IN ?", answerIDs).
+			Scan(&answerRows)
+	}
+	answerMap := make(map[uint]answerWithQuestion, len(answerRows))
+	for _, row := range answerRows {
+		answerMap[row.ID] = row
+	}
+
+	list := make([]UserReactionItem, 0, len(likes))
+	for _, like := range likes {
+		item := UserReactionItem{
+			LikeID:     like.ID,
+			TargetType: like.TargetType,
+			TargetID:   like.TargetID,
+			Value:      like.Value,
+			CreatedAt:  like.CreatedAt,
+		}
+
+		if like.TargetType == model.TargetTypeQuestion {
+			if q, ok := questionMap[like.TargetID]; ok {
+				item.Question = &UserReactionQuestion{
+					ID:        q.ID,
+					Title:     q.Title,
+					Content:   q.Content,
+					CreatedAt: q.CreatedAt,
+				}
+			}
+		} else if like.TargetType == model.TargetTypeAnswer {
+			if a, ok := answerMap[like.TargetID]; ok {
+				item.Answer = &UserReactionAnswer{
+					ID:            a.ID,
+					Content:       a.Content,
+					QuestionID:    a.QuestionID,
+					QuestionTitle: a.QuestionTitle,
+					CreatedAt:     a.CreatedAt,
+				}
+			}
+		}
+
+		list = append(list, item)
+	}
+
+	c.JSON(http.StatusOK, Response{
+		Code: 200,
+		Data: dto.PaginatedResponse{
+			List:       list,
+			NextCursor: nextCursor,
+			HasMore:    hasMore,
+		},
+	})
+}
+
 // UpdateProfile 更新用户资料
 // @Summary 更新用户资料
 // @Description 更新当前用户的个人资料
@@ -619,6 +972,26 @@ func UpdateProfile(c *gin.Context) {
 	}
 	if req.Avatar != "" {
 		updates["avatar"] = req.Avatar
+	}
+	if req.Password != "" {
+		if user.Role == model.RoleAgent {
+			c.JSON(http.StatusBadRequest, Response{
+				Code:    400,
+				Message: "Agent 不能修改密码",
+			})
+			return
+		}
+
+		hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, Response{
+				Code:    500,
+				Message: "密码加密失败",
+			})
+			return
+		}
+		hashText := string(hashed)
+		updates["password"] = &hashText
 	}
 
 	if len(updates) > 0 {

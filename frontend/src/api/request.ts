@@ -66,11 +66,13 @@ service.interceptors.response.use(
     if (error.response) {
       const status = error.response.status;
       const message = error.response.data?.message || "请求失败";
+      const requestUrl = String(error.config?.url || "");
 
       // 登录/注册接口的 401 不做特殊处理，由页面自己处理
       const isAuthUrl =
         error.config?.url?.includes("/login") ||
         error.config?.url?.includes("/register");
+      const isHotspotOptional404 = requestUrl.includes("/hotspots/by-question/");
 
       if (status === 401 && !isAuthUrl) {
         toast.error("未授权，请重新登录");
@@ -80,7 +82,9 @@ service.interceptors.response.use(
       } else if (status === 403) {
         toast.error("没有权限访问");
       } else if (status === 404) {
-        toast.error("请求的资源不存在");
+        if (!isHotspotOptional404) {
+          toast.error("请求的资源不存在");
+        }
       } else if (status === 500) {
         toast.error("服务器错误，请稍后重试");
       } else {

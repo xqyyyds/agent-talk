@@ -5,6 +5,7 @@ This module orchestrates: search -> create question -> create answers.
 """
 
 import asyncio
+import json
 import logging
 import random
 import re
@@ -14,6 +15,7 @@ from typing import Dict, List, Optional
 
 from langchain.agents import create_agent
 
+from app.clients.backend_api import backend_client
 from app.config import settings
 from app.core.agent_manager import agent_manager
 from app.core.hotspots import hotspots_loader
@@ -38,6 +40,34 @@ def _safe_text(text: str) -> str:
     cleaned = re.sub(r"<[^>]+>", " ", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned)
     return cleaned.strip()
+
+
+def _extract_question_id_from_content(content: str) -> Optional[int]:
+    if not content:
+        return None
+
+    try:
+        data = json.loads(content)
+        if isinstance(data, dict):
+            for key in ("id", "question_id"):
+                value = data.get(key)
+                if isinstance(value, int) and value > 0:
+                    return value
+                if isinstance(value, str) and value.isdigit():
+                    return int(value)
+    except Exception:
+        pass
+
+    for pattern in (
+        r"\bquestion_id\b\s*[:=]\s*(\d+)",
+        r"\bquestion id\b\s*[:=]\s*(\d+)",
+        r"\bID\b\s*[:：]\s*(\d+)",
+        r"\bid\b\s*[:=]\s*(\d+)",
+    ):
+        match = re.search(pattern, content, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return None
 
 
 def _build_hotspot_task_message(hotspot: Dict, answerers: list) -> str:
@@ -126,10 +156,17 @@ class LangGraphQAOrchestrator:
                 content = msg.content if isinstance(msg.content, str) else str(msg.content)
             content = _safe_text(content)
 
+            msg_type = getattr(msg, "type", None)
+            msg_name = getattr(msg, "name", None)
+            if question_id is None and msg_type == "tool" and msg_name == "create_question":
+                parsed_qid = _extract_question_id_from_content(content)
+                if parsed_qid:
+                    question_id = parsed_qid
+
             if "问题创建成功" in content or "问题已创建" in content:
-                id_match = re.search(r"ID:\s*(\d+)", content)
-                if id_match:
-                    question_id = int(id_match.group(1))
+                parsed_qid = _extract_question_id_from_content(content)
+                if parsed_qid:
+                    question_id = parsed_qid
 
             if "回答完成" in content:
                 answers_count += 1
@@ -140,18 +177,28 @@ class LangGraphQAOrchestrator:
                 if viewpoint_match:
                     existing_viewpoints.append(viewpoint_match.group(1).strip())
 
-            if (
-                hasattr(msg, "type")
-                and getattr(msg, "type", None) == "tool"
-                and getattr(msg, "name", None) == "search_web"
-            ):
+            if msg_type == "tool" and msg_name == "search_web":
                 search_results_str = content
 
-            if ("失败" in content or "错误" in content) and hasattr(msg, "type") and getattr(msg, "type", None) == "tool":
+            if ("失败" in content or "错误" in content) and msg_type == "tool":
                 errors.append(content)
                 for uname in expected_usernames:
                     if uname in content:
                         answered_usernames.add(uname)
+
+        if question_id is None:
+            try:
+                candidates = await backend_client.get_question_list(limit=20, question_type="qa")
+                hotspot_title = _safe_text(str(hotspot.get("title", "") or hotspot.get("topic", "")))
+                for item in candidates:
+                    candidate_title = _safe_text(str(item.get("title", "")))
+                    if candidate_title and hotspot_title and candidate_title == hotspot_title:
+                        candidate_id = item.get("id")
+                        if isinstance(candidate_id, int):
+                            question_id = candidate_id
+                            break
+            except Exception as e:
+                logger.warning("fallback match question_id failed: %s", e)
 
         missed_usernames = expected_usernames - answered_usernames
         if missed_usernames and question_id:

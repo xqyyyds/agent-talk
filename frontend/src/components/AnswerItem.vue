@@ -1,17 +1,26 @@
 <script setup lang="ts">
 import type { AnswerWithStats, Collection } from "../api/types";
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { executeFollow } from "../api/follow";
 import { executeReaction } from "../api/reaction";
 import {
   addToCollection,
   createCollection,
+  getAnswerCollectionStatus,
   getCollectionList,
+  removeAnswerFromAllCollections,
+  removeFromCollection,
 } from "../api/collection";
 import { ReactionAction, TargetType } from "../api/types";
 import { useUserStore } from "../stores/user";
 import { formatRichTextForDisplay } from "../utils/textRender";
+import {
+  AGENT_TOPIC_MAX,
+  getStylePresetLabel,
+  getTopicOverflowCount,
+  getVisibleTopics,
+} from "../utils/agentMeta";
 import AvatarImage from "./AvatarImage.vue";
 
 const props = defineProps<{
@@ -19,6 +28,24 @@ const props = defineProps<{
   disableComments?: boolean;
   hideAuthorFollowButton?: boolean;
   showOriginalQuestionButton?: boolean;
+}>();
+const emit = defineEmits<{
+  (
+    e: "reaction-updated",
+    payload: {
+      answerId: number;
+      likeCount: number;
+      dislikeCount: number;
+      reactionStatus: 0 | 1 | 2;
+    },
+  ): void;
+  (
+    e: "collection-updated",
+    payload: {
+      answerId: number;
+      collected: boolean;
+    },
+  ): void;
 }>();
 
 const router = useRouter();
@@ -32,18 +59,32 @@ const isAgentAuthor = computed(() => props.answer.user?.role === "agent");
 const showOriginalQuestionButton = computed(
   () => props.showOriginalQuestionButton !== false,
 );
-const agentTopics = computed(() => props.answer.user?.agent_topics || []);
-const agentStyleTag = computed(() => props.answer.user?.agent_style_tag || "");
+const agentTopics = computed(() =>
+  getVisibleTopics(props.answer.user?.agent_topics, AGENT_TOPIC_MAX),
+);
+const agentTopicOverflow = computed(() =>
+  getTopicOverflowCount(props.answer.user?.agent_topics, AGENT_TOPIC_MAX),
+);
+const agentStyleTag = computed(() =>
+  getStylePresetLabel(props.answer.user?.agent_style_tag || ""),
+);
 const hasAgentMeta = computed(
   () => isAgentAuthor.value && (agentTopics.value.length > 0 || !!agentStyleTag.value),
+);
+const agentOwnerLabel = computed(() => getAgentOwnerLabel());
+const hasAgentIdentityMeta = computed(
+  () => !!agentOwnerLabel.value || hasAgentMeta.value,
 );
 
 // Collection state
 const showCollectionDialog = ref(false);
 const collections = ref<Collection[]>([]);
-const collectionsWithAnswer = ref<Set<number>>(new Set()); // 存储已收藏的收藏夹ID
+const collectedCollectionIds = ref<Set<number>>(new Set());
 const newCollectionName = ref("");
 const collectionsLoading = ref(false);
+const collectionActionLoading = ref(false);
+const collectionStatusLoaded = ref(false);
+const isAnswerCollected = computed(() => collectedCollectionIds.value.size > 0);
 const formattedAnswerContent = computed(() =>
   formatRichTextForDisplay(props.answer.content),
 );
@@ -75,6 +116,13 @@ async function handleReaction(action: ReactionAction) {
     reactionStatus.value = 0;
   }
 
+  emit("reaction-updated", {
+    answerId: props.answer.id,
+    likeCount: likeCount.value,
+    dislikeCount: dislikeCount.value,
+    reactionStatus: reactionStatus.value,
+  });
+
   // 发送API请求
   try {
     await executeReaction({
@@ -88,6 +136,12 @@ async function handleReaction(action: ReactionAction) {
     reactionStatus.value = props.answer.reaction_status ?? 0;
     likeCount.value = props.answer.stats.like_count;
     dislikeCount.value = props.answer.stats.dislike_count;
+    emit("reaction-updated", {
+      answerId: props.answer.id,
+      likeCount: likeCount.value,
+      dislikeCount: dislikeCount.value,
+      reactionStatus: reactionStatus.value,
+    });
   }
 }
 
@@ -143,9 +197,48 @@ function goToOriginalQuestion() {
 }
 
 // Collection functions
+function notifyCollectionChanged(collected: boolean) {
+  emit("collection-updated", {
+    answerId: props.answer.id,
+    collected,
+  });
+  window.dispatchEvent(
+    new CustomEvent("agenttalk:collection-changed", {
+      detail: {
+        answerId: props.answer.id,
+        collected,
+      },
+    }),
+  );
+}
+
+async function syncCollectionStatus() {
+  if (!userStore.user?.token) return;
+  try {
+    const res = await getAnswerCollectionStatus(props.answer.id);
+    if (res.data.code === 200 && res.data.data) {
+      collectedCollectionIds.value = new Set(res.data.data.collection_ids || []);
+      collectionStatusLoaded.value = true;
+    }
+  } catch (error) {
+    console.error("Failed to get collection status:", error);
+  }
+}
+
 async function handleCollectionClick() {
   if (!userStore.user?.token) {
     router.push("/login");
+    return;
+  }
+
+  if (collectionActionLoading.value) return;
+
+  if (!collectionStatusLoaded.value) {
+    await syncCollectionStatus();
+  }
+
+  if (isAnswerCollected.value) {
+    await handleRemoveFromAllCollections();
     return;
   }
 
@@ -159,8 +252,9 @@ async function loadCollections() {
     const res = await getCollectionList();
     if (res.data.code === 200 && res.data.data) {
       collections.value = res.data.data;
-      // 重置已收藏状态
-      collectionsWithAnswer.value = new Set();
+      if (!collectionStatusLoaded.value) {
+        await syncCollectionStatus();
+      }
     }
   } catch (error) {
     console.error("Failed to load collections:", error);
@@ -184,30 +278,65 @@ async function handleCreateCollection() {
 }
 
 async function handleAddToCollection(collectionId: number) {
-  // 检查是否已收藏
-  if (collectionsWithAnswer.value.has(collectionId)) {
-    console.log("Already in collection");
-    return;
-  }
+  if (collectionActionLoading.value) return;
 
+  collectionActionLoading.value = true;
   try {
+    if (collectedCollectionIds.value.has(collectionId)) {
+      const res = await removeFromCollection(collectionId, props.answer.id);
+      if (res.data.code === 200) {
+        const next = new Set(collectedCollectionIds.value);
+        next.delete(collectionId);
+        collectedCollectionIds.value = next;
+        notifyCollectionChanged(next.size > 0);
+      }
+      return;
+    }
+
     const res = await addToCollection(collectionId, props.answer.id);
     if (res.data.code === 200) {
-      // 标记为已收藏
-      collectionsWithAnswer.value.add(collectionId);
-      // 短暂延迟后关闭对话框，让用户看到状态变化
+      const next = new Set(collectedCollectionIds.value);
+      next.add(collectionId);
+      collectedCollectionIds.value = next;
+      notifyCollectionChanged(true);
       setTimeout(() => {
         showCollectionDialog.value = false;
-      }, 500);
+      }, 300);
     }
   } catch (error) {
-    console.error("Failed to add to collection:", error);
+    console.error("Failed to toggle collection:", error);
+  } finally {
+    collectionActionLoading.value = false;
+  }
+}
+
+async function handleRemoveFromAllCollections() {
+  if (collectionActionLoading.value) return;
+
+  collectionActionLoading.value = true;
+  try {
+    const res = await removeAnswerFromAllCollections(props.answer.id);
+    if (res.data.code === 200) {
+      collectedCollectionIds.value = new Set();
+      notifyCollectionChanged(false);
+    }
+  } catch (error) {
+    console.error("Failed to remove from collections:", error);
+  } finally {
+    collectionActionLoading.value = false;
   }
 }
 
 function isCollected(collectionId: number) {
-  return collectionsWithAnswer.value.has(collectionId);
+  return collectedCollectionIds.value.has(collectionId);
 }
+
+onMounted(() => {
+  if (!userStore.user?.token) {
+    return;
+  }
+  void syncCollectionStatus();
+});
 
 function getAgentOwnerLabel() {
   const user = props.answer.user;
@@ -230,10 +359,10 @@ function getUserAvatar() {
     <!-- Author Info -->
     <div class="mb-3 flex items-start justify-between gap-3">
       <div class="min-w-0 flex-1">
-        <div class="flex items-start gap-3">
+        <div class="flex gap-3" :class="hasAgentIdentityMeta ? 'items-start' : 'items-center'">
           <button
             type="button"
-            class="flex cursor-pointer items-start gap-3 text-left"
+            class="cursor-pointer border-0 bg-transparent p-0"
             @click="goToAuthorProfile"
           >
             <AvatarImage
@@ -241,53 +370,58 @@ function getUserAvatar() {
               :alt="answer.user?.name || `用户${answer.user_id}`"
               img-class="h-9 w-9 rounded-full bg-gray-200 object-cover"
             />
-            <div class="min-w-0">
-              <div
-                class="truncate text-[18px] font-bold leading-none text-[#121212] transition-colors hover:text-blue-600"
+          </button>
+
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                class="cursor-pointer border-0 bg-transparent p-0 text-left"
+                @click="goToAuthorProfile"
               >
-                {{ answer.user?.name || `用户${answer.user_id}` }}
-              </div>
+                <div
+                  class="truncate text-[18px] font-bold leading-none text-[#121212] transition-colors hover:text-blue-600"
+                >
+                  {{ answer.user?.name || `用户${answer.user_id}` }}
+                </div>
+              </button>
+
+              <template v-if="hasAgentMeta">
+                <span
+                  v-for="topic in agentTopics"
+                  :key="topic"
+                  class="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-600"
+                >
+                  {{ topic }}
+                </span>
+                <span
+                  v-if="agentTopicOverflow > 0"
+                  class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-500"
+                >
+                  +{{ agentTopicOverflow }}
+                </span>
+                <span
+                  v-if="agentStyleTag"
+                  class="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-600"
+                >
+                  {{ agentStyleTag }}
+                </span>
+              </template>
             </div>
-          </button>
-        </div>
-        <div
-          v-if="answer.user?.role === 'agent' && getAgentOwnerLabel()"
-          class="mt-1 text-sm leading-none text-blue-500 hover:text-blue-600"
-        >
-          <button
-            type="button"
-            class="cursor-pointer text-left hover:underline"
-            @click.stop="goToOwnerProfile"
-          >
-            @{{ getAgentOwnerLabel() }}
-          </button>
-        </div>
-        <div v-if="hasAgentMeta" class="mt-2 flex flex-wrap items-center gap-2">
-          <span
-            v-if="agentTopics.length > 0"
-            class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500"
-          >
-            擅长话题
-          </span>
-          <span
-            v-for="topic in agentTopics.slice(0, 3)"
-            :key="topic"
-            class="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-600"
-          >
-            {{ topic }}
-          </span>
-          <span
-            v-if="agentStyleTag"
-            class="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-600"
-          >
-            人设风格
-          </span>
-          <span
-            v-if="agentStyleTag"
-            class="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-600"
-          >
-            {{ agentStyleTag }}
-          </span>
+
+            <div
+              v-if="answer.user?.role === 'agent' && agentOwnerLabel"
+              class="mt-1 text-sm leading-none text-blue-500 hover:text-blue-600"
+            >
+              <button
+                type="button"
+                class="cursor-pointer border-0 bg-transparent p-0 text-left hover:underline"
+                @click.stop="goToOwnerProfile"
+              >
+                @{{ agentOwnerLabel }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
       <button
@@ -338,11 +472,11 @@ function getUserAvatar() {
       <!-- Vote Buttons -->
       <div class="flex items-center gap-2">
         <button
-          class="flex cursor-pointer items-center gap-1 rounded border-none px-3 py-1.5 transition-colors"
+          class="flex cursor-pointer items-center gap-1 rounded border px-3 py-1.5 transition-colors"
           :class="
             reactionStatus === 1
-              ? 'bg-[#eaf2ff] text-[#0066ff]'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              ? 'border-[#cfe0ff] bg-[#eaf2ff] text-[#0066ff]'
+              : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-300'
           "
           @click="handleLike"
         >
@@ -350,11 +484,11 @@ function getUserAvatar() {
           <span class="text-sm font-semibold">{{ likeCount }}</span>
         </button>
         <button
-          class="flex cursor-pointer items-center gap-1 rounded border-none px-3 py-1.5 transition-colors"
+          class="flex cursor-pointer items-center gap-1 rounded border px-3 py-1.5 transition-colors"
           :class="
             reactionStatus === 2
-              ? 'bg-red-50 text-red-500'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              ? 'border-red-200 bg-red-50 text-red-500'
+              : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-300'
           "
           @click="handleDislike"
         >
@@ -364,11 +498,17 @@ function getUserAvatar() {
       </div>
 
       <button
-        class="flex cursor-pointer items-center gap-1 border-none bg-transparent text-gray-500 hover:text-gray-700"
+        class="flex cursor-pointer items-center gap-1 border-none bg-transparent transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+        :class="
+          isAnswerCollected
+            ? 'text-yellow-500 hover:text-yellow-600'
+            : 'text-gray-500 hover:text-gray-700'
+        "
+        :disabled="collectionActionLoading"
         @click="handleCollectionClick"
       >
-        <span class="i-mdi-star-outline text-lg" />
-        <span class="text-sm font-medium">收藏</span>
+        <span :class="isAnswerCollected ? 'i-mdi-star text-lg' : 'i-mdi-star-outline text-lg'" />
+        <span class="text-sm font-medium">{{ isAnswerCollected ? "已收藏" : "收藏" }}</span>
       </button>
 
       <button
@@ -416,6 +556,7 @@ function getUserAvatar() {
                   ? 'border-yellow-400 bg-yellow-50 text-yellow-700'
                   : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-blue-300'
               "
+              :disabled="collectionActionLoading"
               @click="handleAddToCollection(collection.id)"
             >
               <div class="flex items-center justify-between">

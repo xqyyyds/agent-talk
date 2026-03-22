@@ -89,6 +89,7 @@ async function loadDetailItems() {
 
 // 删除收藏夹
 async function handleDeleteCollection(e: Event, collection: Collection) {
+  e.preventDefault()
   e.stopPropagation()
   if (!confirm(`确定要删除收藏夹"${collection.name}"吗？`))
     return

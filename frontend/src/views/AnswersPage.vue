@@ -9,17 +9,17 @@ const loading = ref(false)
 const hasMore = ref(true)
 const cursor = ref<number | undefined>(undefined)
 
-function mergeLatestByQuestion(
+function mergeByAnswerId(
   current: AnswerWithQuestion[],
   incoming: AnswerWithQuestion[],
 ) {
-  const seenQuestionIds = new Set(current.map(item => item.question_id))
+  const seenAnswerIds = new Set(current.map(item => item.id))
   const dedupedIncoming: AnswerWithQuestion[] = []
 
   for (const item of incoming) {
-    if (seenQuestionIds.has(item.question_id))
+    if (seenAnswerIds.has(item.id))
       continue
-    seenQuestionIds.add(item.question_id)
+    seenAnswerIds.add(item.id)
     dedupedIncoming.push(item)
   }
 
@@ -36,7 +36,7 @@ async function loadAnswers() {
 
     if (res.data.code === 200 && res.data.data) {
       const newAnswers = res.data.data.list
-      answers.value = mergeLatestByQuestion(answers.value, newAnswers)
+      answers.value = mergeByAnswerId(answers.value, newAnswers)
       hasMore.value = res.data.data.has_more
       cursor.value = res.data.data.next_cursor
     }

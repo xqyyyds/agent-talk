@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type CreateCollectionRequest struct {
@@ -19,6 +20,12 @@ type CreateCollectionRequest struct {
 type AddToCollectionRequest struct {
 	CollectionID uint `json:"collection_id" binding:"required"`
 	AnswerID     uint `json:"answer_id" binding:"required"`
+}
+
+type AnswerCollectionStatusResponse struct {
+	AnswerID      uint   `json:"answer_id"`
+	CollectionIDs []uint `json:"collection_ids"`
+	IsCollected   bool   `json:"is_collected"`
 }
 
 // CreateCollection 创建收藏夹
@@ -176,16 +183,39 @@ func AddToCollection(c *gin.Context) {
 		return
 	}
 
-	// 检查是否已经收藏
-	var count int64
-	database.DB.Model(&model.CollectionItem{}).
+	// 检查是否已有记录（包含软删除），避免“删后重加”产生重复脏数据
+	var existing model.CollectionItem
+	err := database.DB.Unscoped().
 		Where("collection_id = ? AND answer_id = ?", req.CollectionID, req.AnswerID).
-		Count(&count)
+		First(&existing).Error
+	if err == nil {
+		if existing.DeletedAt.Valid {
+			if updateErr := database.DB.Unscoped().
+				Model(&existing).
+				Update("deleted_at", nil).Error; updateErr != nil {
+				c.JSON(http.StatusInternalServerError, Response{
+					Code:    500,
+					Message: "收藏失败",
+				})
+				return
+			}
+			c.JSON(http.StatusOK, Response{
+				Code:    200,
+				Message: "收藏成功",
+			})
+			return
+		}
 
-	if count > 0 {
 		c.JSON(http.StatusConflict, Response{
 			Code:    409,
 			Message: "已经收藏过了",
+		})
+		return
+	}
+	if err != nil && err != gorm.ErrRecordNotFound {
+		c.JSON(http.StatusInternalServerError, Response{
+			Code:    500,
+			Message: "收藏失败",
 		})
 		return
 	}
@@ -195,8 +225,7 @@ func AddToCollection(c *gin.Context) {
 		CollectionID: req.CollectionID,
 		AnswerID:     req.AnswerID,
 	}
-
-	if err := database.DB.Create(&item).Error; err != nil {
+	if createErr := database.DB.Create(&item).Error; createErr != nil {
 		c.JSON(http.StatusInternalServerError, Response{
 			Code:    500,
 			Message: "收藏失败",
@@ -265,7 +294,8 @@ func RemoveFromCollection(c *gin.Context) {
 	}
 
 	// 删除收藏项
-	if err := database.DB.Where("collection_id = ? AND answer_id = ?", collectionID, answerID).
+	if err := database.DB.Unscoped().
+		Where("collection_id = ? AND answer_id = ?", collectionID, answerID).
 		Delete(&model.CollectionItem{}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, Response{
 			Code:    500,
@@ -277,6 +307,117 @@ func RemoveFromCollection(c *gin.Context) {
 	c.JSON(http.StatusOK, Response{
 		Code:    200,
 		Message: "移除成功",
+	})
+}
+
+// GetAnswerCollectionStatus 获取回答是否已被当前用户收藏
+// @Summary 获取回答收藏状态
+// @Description 返回当前用户收藏该回答的收藏夹 ID 列表
+// @Tags 收藏管理
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param answer_id query int true "回答ID"
+// @Success 200 {object} Response "{\"code\": 200, \"data\": {\"answer_id\": 1, \"collection_ids\": [2], \"is_collected\": true}}"
+// @Failure 400 {object} Response "{\"code\": 400, \"message\": \"参数错误\"}"
+// @Failure 401 {object} Response "{\"code\": 401, \"message\": \"未授权\"}"
+// @Router /collection/answer-status [get]
+func GetAnswerCollectionStatus(c *gin.Context) {
+	answerID, err := strconv.ParseUint(c.Query("answer_id"), 10, 64)
+	if err != nil || answerID == 0 {
+		c.JSON(http.StatusBadRequest, Response{
+			Code:    400,
+			Message: "参数错误",
+		})
+		return
+	}
+
+	userID, exists := c.Get(middleware.IdentityKey)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, Response{
+			Code:    401,
+			Message: "未授权",
+		})
+		return
+	}
+
+	uid := uint(userID.(float64))
+	var collectionIDs []uint
+	if err := database.DB.Table("collection_items").
+		Select("collection_items.collection_id").
+		Joins("JOIN collections ON collections.id = collection_items.collection_id").
+		Where("collections.user_id = ? AND collection_items.answer_id = ? AND collection_items.deleted_at IS NULL AND collections.deleted_at IS NULL", uid, answerID).
+		Pluck("collection_items.collection_id", &collectionIDs).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, Response{
+			Code:    500,
+			Message: "查询失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, Response{
+		Code: 200,
+		Data: AnswerCollectionStatusResponse{
+			AnswerID:      uint(answerID),
+			CollectionIDs: collectionIDs,
+			IsCollected:   len(collectionIDs) > 0,
+		},
+	})
+}
+
+// RemoveAnswerFromAllCollections 从当前用户全部收藏夹移除回答
+// @Summary 从全部收藏夹移除回答
+// @Description 删除当前用户所有收藏夹中的该回答
+// @Tags 收藏管理
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param answer_id query int true "回答ID"
+// @Success 200 {object} Response "{\"code\": 200, \"message\": \"移除成功\", \"data\": {\"removed\": 1}}"
+// @Failure 400 {object} Response "{\"code\": 400, \"message\": \"参数错误\"}"
+// @Failure 401 {object} Response "{\"code\": 401, \"message\": \"未授权\"}"
+// @Router /collection/answer [delete]
+func RemoveAnswerFromAllCollections(c *gin.Context) {
+	answerID, err := strconv.ParseUint(c.Query("answer_id"), 10, 64)
+	if err != nil || answerID == 0 {
+		c.JSON(http.StatusBadRequest, Response{
+			Code:    400,
+			Message: "参数错误",
+		})
+		return
+	}
+
+	userID, exists := c.Get(middleware.IdentityKey)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, Response{
+			Code:    401,
+			Message: "未授权",
+		})
+		return
+	}
+
+	uid := uint(userID.(float64))
+	subQuery := database.DB.Model(&model.Collection{}).
+		Select("id").
+		Where("user_id = ?", uid)
+
+	result := database.DB.Unscoped().
+		Where("answer_id = ? AND collection_id IN (?)", uint(answerID), subQuery).
+		Delete(&model.CollectionItem{})
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, Response{
+			Code:    500,
+			Message: "移除失败",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, Response{
+		Code:    200,
+		Message: "移除成功",
+		Data: gin.H{
+			"removed": result.RowsAffected,
+		},
 	})
 }
 

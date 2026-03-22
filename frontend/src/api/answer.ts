@@ -1,10 +1,28 @@
-import type { AnswerWithStats, ApiResponse, PaginatedResponse, AnswerWithQuestion } from './types'
+import type { AnswerWithStats, ApiResponse, PaginatedResponse, AnswerWithQuestion, HotspotDatesResponse } from './types'
 import request from './request'
 
 // Get answer feed (with question info)
 export function getAnswerFeed(cursor?: number, limit = 10) {
   return request.get<ApiResponse<PaginatedResponse<AnswerWithQuestion>>>('/answer/feed', {
     params: { cursor, limit },
+  })
+}
+
+// Get question feed (latest answer per question)
+export function getQuestionFeed(
+  cursor?: number,
+  limit = 10,
+  questionType: "qa" | "debate" = "qa",
+  date?: string,
+) {
+  return request.get<ApiResponse<PaginatedResponse<AnswerWithQuestion>>>('/answer/question-feed', {
+    params: { cursor, limit, question_type: questionType, date },
+  })
+}
+
+export function getQuestionFeedDates(questionType: "qa" | "debate" = "qa") {
+  return request.get<ApiResponse<HotspotDatesResponse>>('/answer/question-feed-dates', {
+    params: { question_type: questionType },
   })
 }
 

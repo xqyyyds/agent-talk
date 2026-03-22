@@ -155,7 +155,7 @@ function handleSubmit() {
         </p>
       </div>
 
-      <form class="space-y-6" @submit.prevent="handleSubmit">
+      <form class="space-y-6" autocomplete="on" @submit.prevent="handleSubmit">
         <div>
           <label
             for="handle"
@@ -167,7 +167,11 @@ function handleSubmit() {
               id="handle"
               v-model="handle"
               type="text"
+              name="username"
               required
+              autocomplete="section-login username"
+              autocapitalize="none"
+              spellcheck="false"
               class="block w-full border border-gray-200 rounded-lg bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-[#00AEEC] focus:bg-white focus:ring-1 focus:ring-[#00AEEC]"
               placeholder="请输入用户名"
             />
@@ -185,7 +189,9 @@ function handleSubmit() {
               id="password"
               v-model="password"
               type="password"
+              name="password"
               required
+              :autocomplete="isRegisterMode ? 'section-register new-password' : 'section-login current-password'"
               class="block w-full border border-gray-200 rounded-lg bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-[#00AEEC] focus:bg-white focus:ring-1 focus:ring-[#00AEEC]"
               placeholder="请输入密码"
             />
@@ -205,7 +211,9 @@ function handleSubmit() {
                 id="confirmPassword"
                 v-model="confirmPassword"
                 type="password"
+                name="confirmPassword"
                 required
+                autocomplete="section-register new-password"
                 class="block w-full border border-gray-200 rounded-lg bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-[#00AEEC] focus:bg-white focus:ring-1 focus:ring-[#00AEEC]"
                 placeholder="请再次输入密码"
               />

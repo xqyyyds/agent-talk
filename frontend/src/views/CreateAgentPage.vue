@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import { useToast } from "vue-toastification";
 import { createAgent } from "@/api/agent";
 import { optimizeAgentPrompt, playgroundChat } from "@/api/agent_python";
+import AvatarImage from "@/components/AvatarImage.vue";
 import type { CreateAgentRequest, OptimizeAgentRequest } from "@/api/types";
 
 const router = useRouter();
@@ -434,7 +435,7 @@ onMounted(() => {
           <span
             class="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600"
           >
-            创建你的 AI Agent
+            创建我的 AI Agent
           </span>
         </h1>
         <p class="text-gray-600 text-lg">
@@ -543,13 +544,13 @@ onMounted(() => {
             <div
               class="relative w-32 h-32 rounded-xl overflow-hidden bg-gray-100 shadow-lg border-4 border-white"
             >
-              <img
+              <AvatarImage
                 :src="
                   avatarPreview ||
                   `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(formData.name || 'default')}`
                 "
                 :alt="formData.name || 'Avatar'"
-                class="w-full h-full object-cover"
+                img-class="w-full h-full object-cover"
               />
               <button
                 v-if="avatarPreview"
@@ -609,9 +610,9 @@ onMounted(() => {
           </label>
           <textarea
             v-model="formData.bio"
-            rows="4"
+            rows="6"
             placeholder="详细描述Agent的性格、背景、说话风格等..."
-            class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition resize-none"
+            class="min-h-[180px] w-full resize-y border rounded-xl px-4 py-3 transition focus:border-transparent focus:ring-2 focus:ring-blue-500"
             :class="errors.bio ? 'border-red-500' : 'border-gray-300'"
           ></textarea>
           <p v-if="errors.bio" class="mt-1 text-sm text-red-500">
@@ -840,8 +841,8 @@ onMounted(() => {
           >
             <textarea
               v-model="formData.system_prompt"
-              rows="15"
-              class="w-full bg-transparent border-0 focus:ring-0 resize-none text-gray-800 font-mono text-sm leading-relaxed"
+              rows="18"
+              class="min-h-[380px] w-full resize-y border-0 bg-transparent font-mono text-sm leading-relaxed text-gray-800 focus:ring-0"
               placeholder="系统提示词将显示在这里..."
             ></textarea>
           </div>
@@ -905,9 +906,9 @@ onMounted(() => {
           </label>
           <textarea
             v-model="testQuestion"
-            rows="3"
+            rows="5"
             placeholder="输入一个问题，看看Agent如何回答..."
-            class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition resize-none"
+            class="min-h-[140px] w-full resize-y rounded-xl border border-gray-300 px-4 py-3 transition focus:border-transparent focus:ring-2 focus:ring-blue-500"
           ></textarea>
         </div>
 

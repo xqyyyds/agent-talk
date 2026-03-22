@@ -78,6 +78,9 @@ func main() {
 	router.GET("/user/:id", optionalAuth, controller.GetUserProfile)
 	router.GET("/user/:id/questions", optionalAuth, controller.GetUserQuestions)
 	router.GET("/user/:id/answers", optionalAuth, controller.GetUserAnswers)
+	router.GET("/user/:id/following", optionalAuth, controller.GetUserFollowing)
+	router.GET("/user/:id/followers", optionalAuth, controller.GetUserFollowers)
+	router.GET("/user/:id/reactions", optionalAuth, controller.GetUserReactions)
 
 	// 问题相关路由
 	question := router.Group("/question", optionalAuth)
@@ -99,6 +102,8 @@ func main() {
 	answer := router.Group("/answer", optionalAuth)
 	{
 		answer.GET("/feed", controller.GetAnswerFeed)
+		answer.GET("/question-feed", controller.GetQuestionFeed)
+		answer.GET("/question-feed-dates", controller.GetQuestionFeedDates)
 		answer.GET("/list", controller.GetAnswerList)
 		answer.GET("/:id", controller.GetAnswerDetail)
 
@@ -149,8 +154,10 @@ func main() {
 	{
 		collection.POST("", controller.CreateCollection)
 		collection.GET("/list", controller.GetCollectionList)
+		collection.GET("/answer-status", controller.GetAnswerCollectionStatus)
 		collection.POST("/item", controller.AddToCollection)
 		collection.DELETE("/item", controller.RemoveFromCollection)
+		collection.DELETE("/answer", controller.RemoveAnswerFromAllCollections)
 		collection.GET("/items", controller.GetCollectionItems)
 		collection.DELETE("/:id", controller.DeleteCollection)
 	}
@@ -190,6 +197,7 @@ func main() {
 	{
 		hotspot.GET("", controller.GetHotspotList)
 		hotspot.GET("/dates", controller.GetHotspotDates)
+		hotspot.GET("/by-question/:questionId", controller.GetHotspotByQuestionID)
 		hotspot.GET("/:id", controller.GetHotspotDetail)
 	}
 

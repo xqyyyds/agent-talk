@@ -6,9 +6,10 @@ import type {
 } from "../api/types";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { getAnswerList } from "../api/answer";
+import { getAnswerDetail, getAnswerList } from "../api/answer";
 import { getMyAgents } from "../api/agent";
 import { executeFollow } from "../api/follow";
+import { getHotspotByQuestionId } from "../api/hotspot";
 import { getQuestionDetail } from "../api/question";
 import { triggerManualAgentAnswers } from "../api/qa";
 import { executeReaction } from "../api/reaction";
@@ -38,20 +39,23 @@ const myAgents = ref<AgentResponse[]>([]);
 const selectedAgentIds = ref<number[]>([]);
 const loadingMyAgents = ref(false);
 const submittingAgentAnswer = ref(false);
+const hotspotMetaFallback = ref<{
+  source: string;
+  heat: string;
+  time: string;
+  url: string;
+} | null>(null);
 
 const sortMode = ref<"time" | "hot">("time");
 const showSortDropdown = ref(false);
 const hoverSortMode = ref<"time" | "hot" | null>(null);
+const lastRefreshedAt = ref<Date | null>(null);
+const pendingAnswerCount = ref(0);
 const isAnswerDetailMode = computed(() => !!route.params.answerId);
 const isAgentAnswerRoute = computed(
   () => route.name === "question-agent-answer-page",
 );
-const questionTypeLabel = computed(() => {
-  if (!question.value?.type) return "";
-  if (question.value.type === "qa") return "事件热问";
-  if (question.value.type === "debate") return "自问自答";
-  return "";
-});
+const hasPendingUpdates = computed(() => pendingAnswerCount.value > 0);
 
 function decodeText(raw: string | undefined | null): string {
   if (!raw) return "";
@@ -104,16 +108,20 @@ const displayQuestionTitle = computed(() =>
 const displayQuestionContent = computed(() =>
   decodeText(question.value?.content),
 );
+const shouldShowQuestionContent = computed(() => {
+  if ((question.value?.type || "") === "debate") return false;
+  return displayQuestionContent.value.length > 0;
+});
 const displayQuestionContentHtml = computed(() =>
   formatRichTextForDisplay(displayQuestionContent.value),
 );
 const hotspotMeta = computed(() => {
-  const source = String(route.query.hs_source || "");
+  const source = String(question.value?.hotspot?.source || hotspotMetaFallback.value?.source || "");
   const heat = formatHeatToWan(
-    String(route.query.hs_heat || ""),
+    String(question.value?.hotspot?.heat || hotspotMetaFallback.value?.heat || ""),
   );
-  const time = String(route.query.hs_time || "");
-  const url = String(route.query.hs_url || "");
+  const time = String(question.value?.hotspot?.time || hotspotMetaFallback.value?.time || "");
+  const url = String(question.value?.hotspot?.url || hotspotMetaFallback.value?.url || "");
   return {
     source,
     heat,
@@ -122,6 +130,31 @@ const hotspotMeta = computed(() => {
     hasAny: Boolean(source || heat || time || url),
   };
 });
+
+async function loadHotspotMetaFallback() {
+  const questionId = Number(route.params.questionId);
+  if (!questionId) return;
+  if (question.value?.hotspot) {
+    return;
+  }
+
+  try {
+    const res = await getHotspotByQuestionId(questionId);
+    if (res.data.code === 200 && res.data.data) {
+      hotspotMetaFallback.value = {
+        source: res.data.data.source || "",
+        heat: res.data.data.heat || "",
+        time: res.data.data.crawled_at || res.data.data.hotspot_date || "",
+        url: res.data.data.url || "",
+      };
+      return;
+    }
+  } catch {
+    // Not all questions come from hotspot sources.
+  }
+
+  hotspotMetaFallback.value = null;
+}
 
 function getAnswerHotScore(answer: AnswerWithStats) {
   const like = answer.stats.like_count || 0;
@@ -199,9 +232,20 @@ async function loadAnswers() {
   answersLoading.value = true;
   try {
     if (isAnswerDetailMode.value) {
-      const res = await getAnswerList(questionId, undefined, 1);
-      if (res.data.code === 200 && res.data.data) {
-        answers.value = res.data.data.list || [];
+      const answerId = Number(route.params.answerId || 0);
+      if (!answerId) {
+        answers.value = [];
+        return;
+      }
+      const res = await getAnswerDetail(answerId);
+      if (
+        res.data.code === 200 &&
+        res.data.data &&
+        Number(res.data.data.question_id || 0) === questionId
+      ) {
+        answers.value = [res.data.data];
+      } else {
+        answers.value = [];
       }
       return;
     }
@@ -338,6 +382,14 @@ function parseEventPayload(raw: any): Record<string, any> {
   return data && typeof data === "object" ? data : {};
 }
 
+async function refreshCurrentView() {
+  await loadQuestion();
+  await loadHotspotMetaFallback();
+  await loadAnswers();
+  pendingAnswerCount.value = 0;
+  lastRefreshedAt.value = new Date();
+}
+
 useStreamChannel("questions", (message) => {
   const eventName = String(message?.event || "");
   if (eventName !== "answer_created") return;
@@ -345,13 +397,11 @@ useStreamChannel("questions", (message) => {
   const payload = parseEventPayload(message);
   const currentQuestionId = Number(route.params.questionId);
   if (Number(payload?.question_id || 0) !== currentQuestionId) return;
-
-  void loadAnswers();
+  pendingAnswerCount.value += 1;
 });
 
 onMounted(async () => {
-  await loadQuestion();
-  await loadAnswers();
+  await refreshCurrentView();
   if (isAgentAnswerRoute.value) {
     await openAgentAnswerDialog();
   }
@@ -362,8 +412,9 @@ watch(
   async () => {
     question.value = null;
     answers.value = [];
-    await loadQuestion();
-    await loadAnswers();
+    hotspotMetaFallback.value = null;
+    pendingAnswerCount.value = 0;
+    await refreshCurrentView();
   },
 );
 
@@ -376,17 +427,39 @@ watch(
 </script>
 
 <template>
-  <div class="mx-auto mt-4 max-w-3xl px-4 pb-10 md:px-0">
+  <div class="mx-auto mt-4 max-w-[1020px] px-4 pb-10 md:px-0">
+    <div class="right-rail-refresh">
+      <div class="right-rail-refresh-inner">
+        <span class="hidden text-xs text-slate-500 sm:inline">
+          {{
+            hasPendingUpdates
+              ? `有新回答 ${pendingAnswerCount} 条`
+              : lastRefreshedAt
+                ? `上次刷新 ${lastRefreshedAt.toLocaleTimeString("zh-CN")}`
+                : "点击刷新"
+          }}
+        </span>
+        <button
+          class="group flex h-9 w-9 items-center justify-center rounded-full border border-sky-200 bg-white text-sky-700 transition hover:bg-sky-50 disabled:opacity-50"
+          :disabled="loading || answersLoading"
+          @click="refreshCurrentView"
+        >
+          <span
+            class="i-mdi-refresh text-lg"
+            :class="
+              loading || answersLoading
+                ? 'animate-spin'
+                : 'transition-transform duration-300 group-hover:rotate-180'
+            "
+          />
+        </button>
+      </div>
+    </div>
+
     <div v-if="loading" class="py-12 text-center text-gray-500">加载中...</div>
 
     <template v-else-if="question">
       <div class="mb-2.5 rounded-sm bg-white p-6 shadow-sm">
-        <div
-          v-if="questionTypeLabel"
-          class="mb-4 inline-flex items-center rounded-full bg-orange-50 px-3 py-1 text-xs font-medium text-orange-600"
-        >
-          {{ questionTypeLabel }}
-        </div>
         <div
           v-if="question.tags && question.tags.length > 0"
           class="mb-4 flex flex-wrap gap-2"
@@ -443,6 +516,7 @@ watch(
         </h1>
 
         <div
+          v-if="shouldShowQuestionContent"
           class="mb-4 text-[15px] text-gray-800 formatted-content"
           v-html="displayQuestionContentHtml"
         />
@@ -471,11 +545,11 @@ watch(
 
           <div class="ml-2 flex items-center gap-2">
             <button
-              class="flex cursor-pointer items-center gap-1 rounded border-none px-3 py-1.5 transition-colors"
+              class="flex cursor-pointer items-center gap-1 rounded border px-3 py-1.5 transition-colors"
               :class="
                 reactionStatus === 1
-                  ? 'bg-[#eaf2ff] text-[#0066ff]'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'border-[#cfe0ff] bg-[#eaf2ff] text-[#0066ff]'
+                  : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-300'
               "
               @click="
                 handleReaction(
@@ -489,11 +563,11 @@ watch(
               <span class="text-sm font-semibold">{{ likeCount }}</span>
             </button>
             <button
-              class="flex cursor-pointer items-center gap-1 rounded border-none px-3 py-1.5 transition-colors"
+              class="flex cursor-pointer items-center gap-1 rounded border px-3 py-1.5 transition-colors"
               :class="
                 reactionStatus === 2
-                  ? 'bg-red-50 text-red-500'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'border-red-200 bg-red-50 text-red-500'
+                  : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-300'
               "
               @click="
                 handleReaction(
@@ -633,7 +707,7 @@ watch(
           class="overflow-hidden rounded-sm bg-white shadow-sm"
         >
           <div class="border-b border-gray-100 px-4 py-3 text-sm text-gray-500">
-            最新回答（自动热更新）
+            回答详情
           </div>
           <AnswerItem
             :answer="latestAnswer"

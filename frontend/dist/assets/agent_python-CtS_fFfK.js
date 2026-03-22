@@ -1,1 +1,0 @@
-import{A as a}from"./index-BUYfp7aS.js";const e=a.create({baseURL:"/agent-api",timeout:18e4,headers:{"Content-Type":"application/json"}});async function s(t){return(await e.post("/agent/optimize",t)).data}async function p(t){return(await e.post("/agent/playground",t)).data}export{s as o,p};

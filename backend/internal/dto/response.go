@@ -2,6 +2,7 @@ package dto
 
 import (
 	"backend/internal/database"
+	"encoding/json"
 	"time"
 
 	"backend/internal/model"
@@ -17,10 +18,12 @@ type UserResponse struct {
 	Avatar string  `json:"avatar"`
 
 	// Agent 专属字段（可选）
-	APIKey    *string `json:"api_key,omitempty"`
-	IsSystem  *bool   `json:"is_system,omitempty"`
-	OwnerID   *uint   `json:"owner_id,omitempty"`
-	OwnerName *string `json:"owner_name,omitempty"`
+	APIKey        *string  `json:"api_key,omitempty"`
+	IsSystem      *bool    `json:"is_system,omitempty"`
+	OwnerID       *uint    `json:"owner_id,omitempty"`
+	OwnerName     *string  `json:"owner_name,omitempty"`
+	AgentTopics   []string `json:"agent_topics,omitempty"`
+	AgentStyleTag *string  `json:"agent_style_tag,omitempty"`
 
 	IsFollowing *bool `json:"is_following,omitempty"`
 }
@@ -34,10 +37,12 @@ type UserProfileResponse struct {
 	Avatar string  `json:"avatar"`
 
 	// Agent 专属字段（可选）
-	APIKey    *string `json:"api_key,omitempty"`
-	IsSystem  *bool   `json:"is_system,omitempty"`
-	OwnerID   *uint   `json:"owner_id,omitempty"`
-	OwnerName *string `json:"owner_name,omitempty"`
+	APIKey        *string  `json:"api_key,omitempty"`
+	IsSystem      *bool    `json:"is_system,omitempty"`
+	OwnerID       *uint    `json:"owner_id,omitempty"`
+	OwnerName     *string  `json:"owner_name,omitempty"`
+	AgentTopics   []string `json:"agent_topics,omitempty"`
+	AgentStyleTag *string  `json:"agent_style_tag,omitempty"`
 
 	Stats       UserStats `json:"stats"`
 	IsFollowing *bool     `json:"is_following,omitempty"`
@@ -45,10 +50,11 @@ type UserProfileResponse struct {
 
 // UserStats 用户统计数据
 type UserStats struct {
-	QuestionCount  int64 `json:"question_count"`
-	AnswerCount    int64 `json:"answer_count"`
-	FollowerCount  int64 `json:"follower_count"`
-	FollowingCount int64 `json:"following_count"`
+	QuestionCount     int64 `json:"question_count"`
+	AnswerCount       int64 `json:"answer_count"`
+	FollowerCount     int64 `json:"follower_count"`
+	FollowingCount    int64 `json:"following_count"`
+	CreatedAgentCount int64 `json:"created_agent_count"`
 
 	// Agent 专属统计：收到的赞/踩
 	ReceivedLikeCount    int64 `json:"received_like_count"`
@@ -60,20 +66,28 @@ type UserStats struct {
 	FollowedQuestionCount int64 `json:"followed_question_count"`
 }
 
+type HotspotMetaResponse struct {
+	Source string `json:"source"`
+	Heat   string `json:"heat,omitempty"`
+	Time   string `json:"time,omitempty"`
+	URL    string `json:"url,omitempty"`
+}
+
 // QuestionResponse 问题响应结构
 type QuestionResponse struct {
-	ID             uint          `json:"id"`
-	Title          string        `json:"title"`
-	Content        string        `json:"content"`
-	Type           string        `json:"type"`
-	UserID         uint          `json:"user_id"`
-	User           *UserResponse `json:"user,omitempty"`
-	Tags           []TagResponse `json:"tags,omitempty"`
-	CreatedAt      time.Time     `json:"created_at"`
-	UpdatedAt      time.Time     `json:"updated_at"`
-	Stats          *ObjectStats  `json:"stats,omitempty"`
-	ReactionStatus *int          `json:"reaction_status,omitempty"`
-	IsFollowing    *bool         `json:"is_following,omitempty"`
+	ID             uint                 `json:"id"`
+	Title          string               `json:"title"`
+	Content        string               `json:"content"`
+	Type           string               `json:"type"`
+	UserID         uint                 `json:"user_id"`
+	User           *UserResponse        `json:"user,omitempty"`
+	Tags           []TagResponse        `json:"tags,omitempty"`
+	CreatedAt      time.Time            `json:"created_at"`
+	UpdatedAt      time.Time            `json:"updated_at"`
+	Stats          *ObjectStats         `json:"stats,omitempty"`
+	ReactionStatus *int                 `json:"reaction_status,omitempty"`
+	IsFollowing    *bool                `json:"is_following,omitempty"`
+	Hotspot        *HotspotMetaResponse `json:"hotspot,omitempty"`
 }
 
 // AnswerResponse 回答响应结构
@@ -157,6 +171,12 @@ type PaginatedResponse struct {
 	List       interface{} `json:"list"`
 	NextCursor uint        `json:"next_cursor"`
 	HasMore    bool        `json:"has_more"`
+	TotalCount int64       `json:"total_count"`
+}
+
+type agentRawConfigLite struct {
+	Topics   []string `json:"topics"`
+	StyleTag string   `json:"style_tag"`
 }
 
 // 转换函数：Model -> DTO
@@ -182,11 +202,9 @@ func ToUserResponse(user *model.User) *UserResponse {
 		}
 		resp.IsSystem = &user.IsSystem
 		resp.OwnerID = &user.OwnerID
+		applyAgentRawConfig(resp, user.RawConfig)
 
-		if user.IsSystem {
-			ownerName := "system"
-			resp.OwnerName = &ownerName
-		} else if user.OwnerID > 0 {
+		if !user.IsSystem && user.OwnerID > 0 {
 			if user.Owner != nil && user.Owner.Name != "" {
 				ownerName := user.Owner.Name
 				resp.OwnerName = &ownerName
@@ -225,11 +243,9 @@ func ToUserProfileResponse(user *model.User, stats UserStats) *UserProfileRespon
 		}
 		resp.IsSystem = &user.IsSystem
 		resp.OwnerID = &user.OwnerID
+		applyAgentRawConfig(resp, user.RawConfig)
 
-		if user.IsSystem {
-			ownerName := "system"
-			resp.OwnerName = &ownerName
-		} else if user.OwnerID > 0 {
+		if !user.IsSystem && user.OwnerID > 0 {
 			if user.Owner != nil && user.Owner.Name != "" {
 				ownerName := user.Owner.Name
 				resp.OwnerName = &ownerName
@@ -244,6 +260,36 @@ func ToUserProfileResponse(user *model.User, stats UserStats) *UserProfileRespon
 	}
 
 	return resp
+}
+
+func applyAgentRawConfig(resp interface{}, rawConfig string) {
+	if rawConfig == "" {
+		return
+	}
+
+	var parsed agentRawConfigLite
+	if err := json.Unmarshal([]byte(rawConfig), &parsed); err != nil {
+		return
+	}
+
+	switch target := resp.(type) {
+	case *UserResponse:
+		if len(parsed.Topics) > 0 {
+			target.AgentTopics = parsed.Topics
+		}
+		if parsed.StyleTag != "" {
+			style := parsed.StyleTag
+			target.AgentStyleTag = &style
+		}
+	case *UserProfileResponse:
+		if len(parsed.Topics) > 0 {
+			target.AgentTopics = parsed.Topics
+		}
+		if parsed.StyleTag != "" {
+			style := parsed.StyleTag
+			target.AgentStyleTag = &style
+		}
+	}
 }
 
 // ToQuestionResponse 转换 Question 模型为响应结构
@@ -282,6 +328,26 @@ func ToQuestionResponse(question *model.Question, stats *service.ObjectStats) *Q
 	}
 
 	return resp
+}
+
+func ToHotspotMetaResponse(hotspot *model.Hotspot) *HotspotMetaResponse {
+	if hotspot == nil {
+		return nil
+	}
+
+	timeText := ""
+	if !hotspot.CrawledAt.IsZero() {
+		timeText = hotspot.CrawledAt.UTC().Format(time.RFC3339)
+	} else if !hotspot.HotspotDate.IsZero() {
+		timeText = hotspot.HotspotDate.UTC().Format(time.RFC3339)
+	}
+
+	return &HotspotMetaResponse{
+		Source: string(hotspot.Source),
+		Heat:   hotspot.Heat,
+		Time:   timeText,
+		URL:    hotspot.URL,
+	}
 }
 
 // ToAnswerResponse 转换 Answer 模型为响应结构

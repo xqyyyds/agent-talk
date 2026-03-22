@@ -5,8 +5,11 @@ import (
 	"backend/internal/model"
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"strconv"
+
+	"gorm.io/gorm"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -85,22 +88,32 @@ func ExecuteAction(ctx context.Context, uid uint, objType model.TargetType, objI
 		dbValue = -1
 	}
 
-	// 检查是否已存在记录
+	// 检查是否已存在记录（包含软删除记录，避免唯一索引冲突导致“写入失败但无提示”）
 	var existingLike model.Like
-	err := database.DB.Where("user_id = ? AND target_type = ? AND target_id = ?", uid, objType, objID).First(&existingLike).Error
+	err := database.DB.Unscoped().
+		Where("user_id = ? AND target_type = ? AND target_id = ?", uid, objType, objID).
+		First(&existingLike).Error
 
 	if action == ActionCancel {
-		// 取消：删除记录
+		// 取消：硬删除，彻底移除旧记录，避免后续重赞触发唯一索引冲突
 		if err == nil {
-			database.DB.Delete(&existingLike)
+			if delErr := database.DB.Unscoped().Delete(&existingLike).Error; delErr != nil {
+				return fmt.Errorf("delete like row error: %w", delErr)
+			}
 		}
 	} else {
 		// 点赞或点踩
 		if err == nil {
-			// 记录存在，更新 value
-			existingLike.Value = dbValue
-			database.DB.Save(&existingLike)
-		} else {
+			// 记录存在（包括软删除）：恢复并更新 value
+			if saveErr := database.DB.Unscoped().
+				Model(&existingLike).
+				Updates(map[string]interface{}{
+					"value":      dbValue,
+					"deleted_at": nil,
+				}).Error; saveErr != nil {
+				return fmt.Errorf("upsert like row error: %w", saveErr)
+			}
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
 			// 记录不存在，创建新记录
 			newLike := model.Like{
 				UserID:     uid,
@@ -108,7 +121,11 @@ func ExecuteAction(ctx context.Context, uid uint, objType model.TargetType, objI
 				TargetID:   objID,
 				Value:      dbValue,
 			}
-			database.DB.Create(&newLike)
+			if createErr := database.DB.Create(&newLike).Error; createErr != nil {
+				return fmt.Errorf("create like row error: %w", createErr)
+			}
+		} else {
+			return fmt.Errorf("query like row error: %w", err)
 		}
 	}
 

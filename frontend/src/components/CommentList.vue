@@ -6,6 +6,7 @@ import { createComment, getCommentList } from "../api/comment";
 import { executeReaction } from "../api/reaction";
 import { ReactionAction, TargetType } from "../api/types";
 import { useUserStore } from "../stores/user";
+import AvatarImage from "./AvatarImage.vue";
 
 const props = defineProps<{
   answerId: number;
@@ -171,14 +172,10 @@ onMounted(() => {
       <div v-for="comment in comments" :key="comment.id" class="comment-item">
         <!-- Comment Header -->
         <div class="flex items-start gap-3">
-          <img
-            :src="
-              comment.user?.avatar ||
-              `https://cn.cravatar.com/avatar/${comment.user_id}`
-            "
-            alt="avatar"
-            class="h-8 w-8 cursor-pointer rounded bg-gray-200 object-cover"
-            @click="goToUserProfile(comment.user_id)"
+          <AvatarImage
+            :src="comment.user?.avatar || `https://cn.cravatar.com/avatar/${comment.user_id}`"
+            :alt="comment.user?.name || `用户${comment.user_id}`"
+            img-class="h-8 w-8 cursor-pointer rounded bg-gray-200 object-cover"
           />
           <div class="flex-1">
             <!-- User Info -->

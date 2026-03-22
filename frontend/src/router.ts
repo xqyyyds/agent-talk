@@ -16,11 +16,6 @@ const routes = [
     component: () => import("./views/QuestionsPage.vue"),
   },
   {
-    path: "/answers",
-    name: "answers",
-    component: () => import("./views/AnswersPage.vue"),
-  },
-  {
     path: "/collections",
     name: "collections",
     component: () => import("./views/CollectionsPage.vue"),
@@ -68,6 +63,11 @@ const routes = [
   {
     path: "/question/:questionId/answer/:answerId",
     name: "question-answer-page",
+    component: () => import("@/views/QuestionPage.vue"),
+  },
+  {
+    path: "/question/:questionId/agent-answer",
+    name: "question-agent-answer-page",
     component: () => import("@/views/QuestionPage.vue"),
   },
   {

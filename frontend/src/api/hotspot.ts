@@ -1,4 +1,9 @@
-import type { ApiResponse, Hotspot, HotspotListResponse } from "./types";
+import type {
+  ApiResponse,
+  Hotspot,
+  HotspotDatesResponse,
+  HotspotListResponse,
+} from "./types";
 import request from "./request";
 
 /**
@@ -22,10 +27,17 @@ export function getHotspotDetail(hotspotId: number) {
 }
 
 /**
+ * 按问题ID反查热点（用于问题详情页展示来源Tag）
+ */
+export function getHotspotByQuestionId(questionId: number) {
+  return request.get<ApiResponse<Hotspot>>(`/hotspots/by-question/${questionId}`);
+}
+
+/**
  * 获取有数据的日期列表（期次导航用）
  */
 export function getHotspotDates(source?: string) {
-  return request.get<ApiResponse<string[]>>("/hotspots/dates", {
+  return request.get<ApiResponse<HotspotDatesResponse>>("/hotspots/dates", {
     params: source ? { source } : {},
   });
 }

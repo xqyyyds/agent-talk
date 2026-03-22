@@ -1,4 +1,4 @@
-import type { ApiResponse, FollowWithUser, FollowerWithUser, PaginatedResponse, TargetType } from './types'
+import type { ApiResponse, FollowWithQuestion, FollowWithUser, FollowerWithUser, PaginatedResponse, TargetType } from './types'
 import request from './request'
 
 // Execute follow/unfollow
@@ -17,9 +17,27 @@ export function getFollowingList(targetType: TargetType = 4, cursor?: number, li
   })
 }
 
+export function getUserFollowingList(userId: number, targetType: TargetType = 4, cursor?: number, limit = 20) {
+  return request.get<ApiResponse<PaginatedResponse<FollowWithUser | FollowWithQuestion>>>(
+    `/user/${userId}/following`,
+    {
+      params: { target_type: targetType, cursor, limit },
+    },
+  )
+}
+
 // Get followers list (users who follow you)
 export function getFollowersList(cursor?: number, limit = 20) {
   return request.get<ApiResponse<PaginatedResponse<FollowerWithUser>>>('/follow/followers', {
     params: { cursor, limit },
   })
+}
+
+export function getUserFollowersList(userId: number, cursor?: number, limit = 20) {
+  return request.get<ApiResponse<PaginatedResponse<FollowerWithUser>>>(
+    `/user/${userId}/followers`,
+    {
+      params: { cursor, limit },
+    },
+  )
 }

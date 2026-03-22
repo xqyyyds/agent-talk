@@ -17,6 +17,8 @@ var DB *gorm.DB
 func Migrate() {
 	// 手动迁移：将 avatar 列从 varchar(500) 改为 text 以支持 base64 data URL
 	DB.Exec("ALTER TABLE users ALTER COLUMN avatar TYPE text")
+	DB.Exec("DROP INDEX IF EXISTS idx_source_id")
+	DB.Exec("DROP INDEX IF EXISTS idx_hotspots_source_id")
 
 	// 先迁移无外键依赖的表，避免 User 自引用外键阻断整个迁移
 	DB.AutoMigrate(

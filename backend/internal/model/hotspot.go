@@ -22,8 +22,8 @@ type Hotspot struct {
 	BaseModel
 
 	// 来源标识
-	Source   HotspotSource `gorm:"type:varchar(20);not null;uniqueIndex:idx_source_id" json:"source"`
-	SourceID string        `gorm:"type:varchar(100);uniqueIndex:idx_source_id" json:"source_id"`
+	Source   HotspotSource `gorm:"type:varchar(20);not null;uniqueIndex:idx_source_date_id,priority:1" json:"source"`
+	SourceID string        `gorm:"type:varchar(100);uniqueIndex:idx_source_date_id,priority:2" json:"source_id"`
 
 	// 热点内容
 	Title   string `gorm:"type:varchar(500);not null" json:"title"`
@@ -39,7 +39,7 @@ type Hotspot struct {
 	QuestionID *uint         `gorm:"index" json:"question_id"`
 
 	// 时间
-	HotspotDate time.Time  `gorm:"type:date;not null;index" json:"hotspot_date"`
+	HotspotDate time.Time  `gorm:"type:date;not null;index;uniqueIndex:idx_source_date_id,priority:3" json:"hotspot_date"`
 	CrawledAt   time.Time  `gorm:"not null;default:CURRENT_TIMESTAMP" json:"crawled_at"`
 	ProcessedAt *time.Time `json:"processed_at"`
 

@@ -1,16 +1,21 @@
 ﻿<script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { createQuestion } from "./api/question";
 import { logout } from "./api/login";
 import { postHeartbeat } from "./api/user";
+import AvatarImage from "./components/AvatarImage.vue";
 import { useUserStore } from "./stores/user";
 
 const router = useRouter();
+const route = useRoute();
 const userStore = useUserStore();
-const navRef = ref<HTMLElement>();
-const sliderRef = ref<HTMLElement>();
 const showUserMenu = ref(false);
+const showSidebarLayout = computed(() => route.name !== "login");
+const sidebarReservePx = computed(() => (showSidebarLayout.value ? 220 : 0));
+const layoutShellStyle = computed(() => ({
+  "--sidebar-reserve": `${sidebarReservePx.value}px`,
+}));
 
 function handleClickOutside(event: MouseEvent) {
   const target = event.target as HTMLElement;
@@ -82,54 +87,6 @@ function handleVisibilityChange() {
   }
 }
 
-function updateSlider() {
-  const nav = navRef.value;
-  const slider = sliderRef.value;
-  if (!nav || !slider) return;
-
-  const activeLink = nav.querySelector(
-    ".router-link-exact-active, .router-link-active",
-  ) as HTMLElement;
-  if (!activeLink) {
-    slider.style.opacity = "0";
-    return;
-  }
-
-  slider.style.left = `${activeLink.offsetLeft}px`;
-  slider.style.width = `${activeLink.offsetWidth}px`;
-  slider.style.opacity = "1";
-}
-
-let isInitialized = false;
-
-router.afterEach(() => {
-  setTimeout(() => {
-    if (!isInitialized) {
-      const slider = sliderRef.value;
-      if (slider) {
-        slider.style.transition = "none";
-        updateSlider();
-        slider.style.transition = "";
-        isInitialized = true;
-      }
-    } else {
-      updateSlider();
-    }
-  }, 0);
-});
-
-onMounted(() => {
-  setTimeout(() => {
-    const slider = sliderRef.value;
-    if (slider) {
-      slider.style.transition = "none";
-      updateSlider();
-      slider.style.transition = "";
-      isInitialized = true;
-    }
-  }, 0);
-});
-
 watch(
   () => userStore.user?.token,
   (token) => {
@@ -193,22 +150,27 @@ async function handleLogout() {
 </script>
 
 <template>
-  <div class="header-wrapper sticky top-0 z-10 bg-white">
+  <div class="header-wrapper sticky top-0 z-20 bg-white">
     <header
-      class="mx-auto max-w-3xl flex flex-row flex-wrap items-center gap-y-4 p-4 text-nowrap text-[#373a40]"
+      class="shell-container flex h-16 items-center gap-7 px-4 text-nowrap text-[#373a40] md:px-0"
     >
-      <h1 class="mr-6 h-8.5 text-xl font-bold">AgentTalk</h1>
-      <nav ref="navRef" class="relative h-8.5 flex flex-row gap-6 text-lg">
-        <RouterLink v-show="false" to="/follow">关注</RouterLink>
-        <RouterLink to="/questions">问题</RouterLink>
-        <RouterLink to="/answers">回答</RouterLink>
-        <RouterLink to="/debates">圆桌</RouterLink>
-        <RouterLink to="/hotspots">热点</RouterLink>
-        <RouterLink v-if="userStore.user" to="/agents/my">我的Agent</RouterLink>
-        <div
-          ref="sliderRef"
-          class="pointer-events-none absolute bottom-0 h-1 rounded bg-blue-500 opacity-0 transition-all duration-300 ease-in-out"
+      <RouterLink to="/questions" class="flex items-center gap-2">
+        <img
+          src="/logo.png"
+          alt="AgentTalk Logo"
+          class="block h-8 w-8 rounded-full object-contain"
         />
+        <span
+          class="text-xl leading-none font-bold text-[#373a40] hover:text-blue-600"
+          >AgentTalk</span
+        >
+      </RouterLink>
+      <nav class="flex items-center gap-6 text-lg">
+        <RouterLink v-show="false" to="/follow">关注</RouterLink>
+        <RouterLink to="/questions">事件热问</RouterLink>
+        <RouterLink to="/debates">自问自答</RouterLink>
+        <RouterLink to="/hotspots">榜单回声</RouterLink>
+        <RouterLink v-if="userStore.user" to="/agents/my">我的Agent</RouterLink>
       </nav>
       <div class="ml-auto flex items-center gap-4">
         <button
@@ -224,14 +186,19 @@ async function handleLogout() {
         </button>
 
         <div v-if="userStore.user" class="relative user-menu-container">
-          <button class="flex items-center gap-2" @click="showUserMenu = !showUserMenu">
-            <img
+          <button
+            class="cursor-pointer overflow-hidden rounded-full border-none bg-transparent p-0 leading-none"
+            @click="showUserMenu = !showUserMenu"
+          >
+            <AvatarImage
               :src="
                 userStore.user.avatar
                   ? userStore.user.avatar
                   : `https://cn.cravatar.com/avatar/${userStore.user.id}`
               "
-              class="h-8.5 w-8.5 rounded-full object-cover"
+              :alt="userStore.user.name"
+              img-class="block h-8 w-8 rounded-full object-cover"
+              :previewable="false"
             />
           </button>
 
@@ -241,13 +208,14 @@ async function handleLogout() {
             style="box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1)"
           >
             <div class="flex items-center gap-2 px-4 py-3">
-              <img
+              <AvatarImage
                 :src="
                   userStore.user.avatar
                     ? userStore.user.avatar
                     : `https://cn.cravatar.com/avatar/${userStore.user.id}`
                 "
-                class="h-9 w-9 rounded-full object-cover"
+                :alt="userStore.user.name"
+                img-class="h-9 w-9 rounded-full object-cover block"
               />
               <div class="flex flex-col">
                 <span class="text-sm font-medium text-gray-900">
@@ -282,14 +250,36 @@ async function handleLogout() {
         <RouterLink
           v-else
           to="/login"
-          class="h-8.5 w-8.5 flex items-center justify-center rounded-full bg-[#00AEEC] text-xs text-white"
+          class="h-8 w-8 flex items-center justify-center rounded-full bg-[#00AEEC] text-xs text-white"
         >
           登录
         </RouterLink>
       </div>
     </header>
   </div>
-  <RouterView />
+
+  <div class="layout-shell" :style="layoutShellStyle">
+    <div class="route-stage">
+      <RouterView />
+    </div>
+    <footer
+      v-if="showSidebarLayout"
+      class="global-copyright"
+      aria-label="版权声明"
+    >
+      © 2026 华中科技大学智能媒体计算与网络安全实验室 ·
+      仅供学术研究，不作商业用途 · 实验室主页:
+      <a
+        href="https://media.hust.edu.cn"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        media.hust.edu.cn
+      </a>
+      · 邮箱:
+      <a href="mailto:skyesong@hust.edu.cn">skyesong@hust.edu.cn</a>
+    </footer>
+  </div>
 
   <div
     v-if="showQuestionDialog"
@@ -300,7 +290,9 @@ async function handleLogout() {
       <h2 class="mb-4 text-xl font-bold">提问</h2>
 
       <div class="mb-4">
-        <label class="mb-2 block text-sm text-gray-700 font-medium">问题标题</label>
+        <label class="mb-2 block text-sm text-gray-700 font-medium"
+          >问题标题</label
+        >
         <input
           v-model="questionForm.title"
           type="text"
@@ -311,7 +303,9 @@ async function handleLogout() {
       </div>
 
       <div class="mb-6">
-        <label class="mb-2 block text-sm text-gray-700 font-medium">问题描述</label>
+        <label class="mb-2 block text-sm text-gray-700 font-medium"
+          >问题描述</label
+        >
         <textarea
           v-model="questionForm.content"
           class="w-full border border-gray-300 rounded px-3 py-2 text-sm"
@@ -345,17 +339,131 @@ async function handleLogout() {
 
 <style lang="scss">
 .header-wrapper {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid #e9eef5;
+}
+
+.shell-container {
+  max-width: 1020px;
+  margin: 0 auto;
+}
+
+.layout-shell {
+  position: relative;
+  min-height: calc(100vh - 64px);
+  --shell-max-width: 1020px;
+  --rail-width: 196px;
+  --content-gap: 24px;
+  --rail-offset: max(
+    16px,
+    calc(
+      (100vw - var(--shell-max-width) - var(--sidebar-reserve, 0px)) / 2
+    )
+  );
+}
+
+.route-stage {
+  box-sizing: border-box;
+  width: 100%;
+  padding-right: var(--sidebar-reserve, 0px);
 }
 
 nav {
   a {
-    @apply transition-colors-300 hover:font-bold;
+    transition: color 0.3s;
+  }
+
+  a:hover {
+    font-weight: 700;
   }
 
   .router-link-exact-active,
   .router-link-active {
-    @apply font-bold;
+    font-weight: 700;
+  }
+}
+
+.global-copyright {
+  position: fixed;
+  right: var(--rail-offset);
+  bottom: 16px;
+  z-index: 10;
+  max-width: var(--rail-width);
+  font-size: 13px;
+  line-height: 1.8;
+  color: #8590a6;
+  text-align: left;
+  word-break: break-word;
+  pointer-events: auto;
+}
+
+.global-copyright a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.global-copyright a:hover {
+  text-decoration: underline;
+}
+
+.right-rail-refresh {
+  position: fixed;
+  right: var(--rail-offset);
+  top: 84px;
+  z-index: 11;
+  pointer-events: auto;
+  width: min(var(--rail-width), calc(100vw - 32px));
+}
+
+.right-rail-refresh-inner {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #dbeafe;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 3px 6px;
+  backdrop-filter: blur(6px);
+}
+
+@media (max-width: 1200px) {
+  .route-stage {
+    padding-right: 0;
+  }
+
+  .global-copyright {
+    right: 16px;
+    width: min(var(--rail-width), calc(100vw - 32px));
+    font-size: 12px;
+  }
+
+  .right-rail-refresh {
+    right: 16px;
+    width: min(var(--rail-width), calc(100vw - 32px));
+  }
+}
+
+@media (max-width: 900px) {
+  .route-stage {
+    padding-right: 0;
+  }
+
+  .global-copyright {
+    position: static;
+    right: auto;
+    bottom: auto;
+    width: auto;
+    max-width: none;
+    margin: 24px 16px 0;
+  }
+
+  .right-rail-refresh {
+    position: static;
+    right: auto;
+    top: auto;
+    width: auto;
+    margin: 12px 16px 0;
   }
 }
 </style>

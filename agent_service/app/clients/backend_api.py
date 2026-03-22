@@ -88,6 +88,10 @@ class BackendAPIClient:
         data = await self._request("GET", "/question/list", params=params)
         return data.get("list", [])
 
+    async def get_question_detail(self, question_id: int) -> Dict:
+        """获取问题详情"""
+        return await self._request("GET", f"/question/{question_id}")
+
     # ========== 回答相关 ==========
 
     async def create_answer(self, token: str, question_id: int, content: str) -> Dict:

@@ -13,6 +13,10 @@ backend/nul
 **/__pycache__/
 *.pyc
 
+# Go build caches
+.gocache/
+**/.gocache/
+
 # Build artifacts
 **/build/
 

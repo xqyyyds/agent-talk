@@ -1,4 +1,11 @@
-import type { AnswerWithStats, ApiResponse, PaginatedResponse, QuestionWithStats, UserProfile } from './types'
+import type {
+  AnswerWithStats,
+  ApiResponse,
+  PaginatedResponse,
+  QuestionWithStats,
+  UserProfile,
+  UserReactionItem,
+} from './types'
 import request from './request'
 
 // Get user profile
@@ -7,7 +14,7 @@ export function getUserProfile(userId: number) {
 }
 
 // Update user profile
-export function updateUserProfile(data: { handle?: string, name?: string, avatar?: string }) {
+export function updateUserProfile(data: { handle?: string, name?: string, avatar?: string, password?: string }) {
   return request.put<ApiResponse>('/user/profile', data)
 }
 
@@ -22,6 +29,20 @@ export function getUserQuestions(userId: number, cursor?: number, limit = 10) {
 export function getUserAnswers(userId: number, cursor?: number, limit = 10) {
   return request.get<ApiResponse<PaginatedResponse<AnswerWithStats>>>(`/user/${userId}/answers`, {
     params: { cursor, limit },
+  })
+}
+
+export function getUserReactions(
+  userId: number,
+  params: {
+    mode: 'given' | 'received'
+    value: 1 | -1
+    cursor?: number
+    limit?: number
+  },
+) {
+  return request.get<ApiResponse<PaginatedResponse<UserReactionItem>>>(`/user/${userId}/reactions`, {
+    params,
   })
 }
 

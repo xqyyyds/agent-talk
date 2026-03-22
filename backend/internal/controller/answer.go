@@ -8,7 +8,10 @@ import (
 	"backend/internal/service"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -343,6 +346,285 @@ func GetAnswerFeed(c *gin.Context) {
 			List:       list,
 			NextCursor: nextCursor,
 			HasMore:    hasMore,
+		},
+	})
+}
+
+type latestQuestionAnswerRow struct {
+	LatestID uint `gorm:"column:latest_id"`
+}
+
+type questionFeedDatesResponse struct {
+	Dates       []string `json:"dates"`
+	RecentDates []string `json:"recent_dates"`
+	MinDate     string   `json:"min_date"`
+	MaxDate     string   `json:"max_date"`
+}
+
+// GetQuestionFeed 获取“每个问题最新回答”的Feed流
+// @Summary 获取问题流（每题最新回答）
+// @Description 按问题聚合，每个问题只返回最新一条回答，用于事件热问页
+// @Tags 回答管理
+// @Accept json
+// @Produce json
+// @Param cursor query int false "游标（上一页最后一条回答ID）"
+// @Param limit query int false "每页数量" default(10)
+// @Success 200 {object} Response "{\"code\": 200, \"data\": {\"list\": [...], \"next_cursor\": 123, \"has_more\": true}}"
+// @Router /answer/question-feed [get]
+func GetQuestionFeed(c *gin.Context) {
+	cursor, _ := strconv.ParseUint(c.Query("cursor"), 10, 64)
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	questionType := strings.TrimSpace(c.DefaultQuery("question_type", "qa"))
+	dateKey := strings.TrimSpace(c.Query("date"))
+
+	if limit < 1 || limit > 100 {
+		limit = 10
+	}
+	if questionType != "qa" && questionType != "debate" {
+		c.JSON(http.StatusBadRequest, Response{
+			Code:    400,
+			Message: "question_type 仅支持 qa 或 debate",
+		})
+		return
+	}
+
+	var dayStart time.Time
+	var dayEnd time.Time
+	if dateKey != "" {
+		parsed, err := time.ParseInLocation("2006-01-02", dateKey, time.Local)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, Response{
+				Code:    400,
+				Message: "date 格式必须为 YYYY-MM-DD",
+			})
+			return
+		}
+		dayStart = parsed
+		dayEnd = parsed.Add(24 * time.Hour)
+	}
+
+	sub := database.DB.Model(&model.Answer{}).
+		Joins("JOIN questions ON questions.id = answers.question_id").
+		Where("questions.type = ?", questionType).
+		Select("MAX(answers.id) AS latest_id, answers.question_id").
+		Group("answers.question_id")
+	if !dayStart.IsZero() {
+		sub = sub.Where("answers.created_at >= ? AND answers.created_at < ?", dayStart, dayEnd)
+	}
+
+	countQuery := database.DB.Model(&model.Answer{}).
+		Joins("JOIN questions ON questions.id = answers.question_id").
+		Where("questions.type = ?", questionType)
+	if !dayStart.IsZero() {
+		countQuery = countQuery.Where("answers.created_at >= ? AND answers.created_at < ?", dayStart, dayEnd)
+	}
+	var totalCount int64
+	if err := countQuery.Distinct("answers.question_id").Count(&totalCount).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, Response{
+			Code:    500,
+			Message: "查询总数失败",
+		})
+		return
+	}
+
+	latestRowsQuery := database.DB.Table("(?) AS grouped_answers", sub)
+	if cursor > 0 {
+		latestRowsQuery = latestRowsQuery.Where("grouped_answers.latest_id < ?", cursor)
+	}
+
+	var latestRows []latestQuestionAnswerRow
+	if err := latestRowsQuery.
+		Order("grouped_answers.latest_id DESC").
+		Limit(limit + 1).
+		Scan(&latestRows).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, Response{
+			Code:    500,
+			Message: "查询失败",
+		})
+		return
+	}
+
+	hasMore := len(latestRows) > limit
+	if hasMore {
+		latestRows = latestRows[:limit]
+	}
+
+	answerIDs := make([]uint, 0, len(latestRows))
+	for _, row := range latestRows {
+		if row.LatestID > 0 {
+			answerIDs = append(answerIDs, row.LatestID)
+		}
+	}
+
+	var nextCursor uint
+	if len(answerIDs) > 0 {
+		nextCursor = answerIDs[len(answerIDs)-1]
+	}
+
+	if len(answerIDs) == 0 {
+		c.JSON(http.StatusOK, Response{
+			Code: 200,
+			Data: dto.PaginatedResponse{
+				List:       []*dto.AnswerWithQuestionResponse{},
+				NextCursor: 0,
+				HasMore:    false,
+				TotalCount: totalCount,
+			},
+		})
+		return
+	}
+
+	var answers []model.Answer
+	if err := database.DB.Model(&model.Answer{}).
+		Where("id IN ?", answerIDs).
+		Preload("User").
+		Preload("Question").
+		Preload("Question.User").
+		Preload("Question.Tags").
+		Find(&answers).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, Response{
+			Code:    500,
+			Message: "查询失败",
+		})
+		return
+	}
+
+	orderMap := make(map[uint]int, len(answerIDs))
+	for idx, id := range answerIDs {
+		orderMap[id] = idx
+	}
+	sort.SliceStable(answers, func(i, j int) bool {
+		return orderMap[answers[i].ID] < orderMap[answers[j].ID]
+	})
+
+	questionIDs := make([]uint, 0, len(answers))
+	questionSet := make(map[uint]struct{}, len(answers))
+	for _, a := range answers {
+		if _, exists := questionSet[a.QuestionID]; exists {
+			continue
+		}
+		questionSet[a.QuestionID] = struct{}{}
+		questionIDs = append(questionIDs, a.QuestionID)
+	}
+
+	answerStats, err := service.BatchGetStats(c.Request.Context(), model.TargetTypeAnswer, answerIDs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, Response{
+			Code:    500,
+			Message: "获取回答统计信息失败",
+		})
+		return
+	}
+
+	questionStats, err := service.BatchGetStats(c.Request.Context(), model.TargetTypeQuestion, questionIDs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, Response{
+			Code:    500,
+			Message: "获取问题统计信息失败",
+		})
+		return
+	}
+
+	hotspotMap, err := loadHotspotMapForQuestions(questionIDs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, Response{
+			Code:    500,
+			Message: "获取热点信息失败",
+		})
+		return
+	}
+
+	var statusMap map[uint]int
+	if userID, ok := getOptionalUserID(c); ok && len(answerIDs) > 0 {
+		statusMap, err = service.BatchGetUserStatus(c.Request.Context(), userID, model.TargetTypeAnswer, answerIDs)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, Response{
+				Code:    500,
+				Message: "获取点赞状态失败",
+			})
+			return
+		}
+	}
+
+	list := make([]*dto.AnswerWithQuestionResponse, len(answers))
+	for i, a := range answers {
+		aStat := answerStats[a.ID]
+		qStat := questionStats[a.QuestionID]
+		resp := dto.ToAnswerWithQuestionResponse(&a, &aStat, &qStat)
+		if resp.Question != nil {
+			resp.Question.Hotspot = dto.ToHotspotMetaResponse(hotspotMap[a.QuestionID])
+		}
+		if statusMap != nil {
+			if status, ok := statusMap[a.ID]; ok {
+				resp.ReactionStatus = &status
+			}
+		}
+		list[i] = resp
+	}
+
+	c.JSON(http.StatusOK, Response{
+		Code: 200,
+		Data: dto.PaginatedResponse{
+			List:       list,
+			NextCursor: nextCursor,
+			HasMore:    hasMore,
+			TotalCount: totalCount,
+		},
+	})
+}
+
+// GetQuestionFeedDates 获取问答流可选日期
+// @Summary 获取问答流日期列表
+// @Description 返回指定问题类型下存在回答的日期列表，用于热问/自问日期筛选
+// @Tags 回答管理
+// @Accept json
+// @Produce json
+// @Param question_type query string false "问题类型 qa|debate" default(qa)
+// @Success 200 {object} Response
+// @Router /answer/question-feed-dates [get]
+func GetQuestionFeedDates(c *gin.Context) {
+	questionType := strings.TrimSpace(c.DefaultQuery("question_type", "qa"))
+	if questionType != "qa" && questionType != "debate" {
+		c.JSON(http.StatusBadRequest, Response{
+			Code:    400,
+			Message: "question_type 仅支持 qa 或 debate",
+		})
+		return
+	}
+
+	var dates []string
+	if err := database.DB.Model(&model.Answer{}).
+		Joins("JOIN questions ON questions.id = answers.question_id").
+		Where("questions.type = ?", questionType).
+		Distinct("DATE(answers.created_at) AS d").
+		Order("d DESC").
+		Pluck("d", &dates).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, Response{
+			Code:    500,
+			Message: "获取日期列表失败",
+		})
+		return
+	}
+
+	recentDates := dates
+	if len(recentDates) > 7 {
+		recentDates = recentDates[:7]
+	}
+
+	minDate := ""
+	maxDate := ""
+	if len(dates) > 0 {
+		maxDate = dates[0]
+		minDate = dates[len(dates)-1]
+	}
+
+	c.JSON(http.StatusOK, Response{
+		Code: 200,
+		Data: questionFeedDatesResponse{
+			Dates:       dates,
+			RecentDates: recentDates,
+			MinDate:     minDate,
+			MaxDate:     maxDate,
 		},
 	})
 }

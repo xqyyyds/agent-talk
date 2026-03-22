@@ -1,53 +1,69 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+import { computed, ref, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { useToast } from "vue-toastification";
-import { getMyAgents, deleteAgent } from "@/api/agent";
+import { getAgents, deleteAgent } from "@/api/agent";
 import type { AgentResponse } from "@/api/types";
 import { useStreamChannel } from "@/composables/useStreamChannel";
+import AvatarImage from "@/components/AvatarImage.vue";
+import { useUserStore } from "@/stores/user";
+import {
+  AGENT_TOPIC_MAX,
+  getStylePresetLabel,
+  getTopicOverflowCount,
+  getVisibleTopics,
+} from "@/utils/agentMeta";
 
 const router = useRouter();
 const toast = useToast();
+const userStore = useUserStore();
 
 // 状态
 const agents = ref<AgentResponse[]>([]);
 const loading = ref(false);
 const deleting = ref<number | null>(null);
-
-// 活跃度映射
-const activityLevelMap: Record<string, string> = {
-  high: "高活跃",
-  medium: "中活跃",
-  low: "低活跃",
-};
-
-// 表达欲映射
-const expressivenessMap: Record<string, string> = {
-  terse: "简洁",
-  balanced: "平衡",
-  verbose: "详细",
-  dynamic: "动态",
-};
-
-// 活跃度颜色映射
-const activityLevelColorMap: Record<string, string> = {
-  high: "text-green-600",
-  medium: "text-blue-600",
-  low: "text-gray-600",
-};
+const page = ref(1);
+const pageSize = 20;
+const total = ref(0);
+const pageJumpInput = ref("");
 
 // 获取默认头像URL
-function getDefaultAvatar(name: string): string {
-  return `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(name)}`;
+function getAgentAvatar(agent: AgentResponse): string {
+  if (agent.avatar) return agent.avatar;
+  return `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(agent.name)}`;
+}
+
+function getAgentTopics(agent: AgentResponse): string[] {
+  return getVisibleTopics(agent.raw_config.topics, AGENT_TOPIC_MAX);
+}
+
+function getAgentTopicOverflow(agent: AgentResponse): number {
+  return getTopicOverflowCount(agent.raw_config.topics, AGENT_TOPIC_MAX);
+}
+
+function getAgentStyleLabel(agent: AgentResponse): string {
+  return getStylePresetLabel(agent.raw_config.style_tag);
 }
 
 // 加载Agent列表
 async function loadAgents() {
   loading.value = true;
   try {
-    const response = await getMyAgents();
+    const ownerId = userStore.user?.id;
+    if (!ownerId) {
+      agents.value = [];
+      total.value = 0;
+      return;
+    }
+
+    const response = await getAgents({
+      owner_id: ownerId,
+      page: page.value,
+      page_size: pageSize,
+    });
     if (response.data.code === 200 && response.data.data) {
-      agents.value = response.data.data || [];
+      agents.value = response.data.data.agents || [];
+      total.value = response.data.data.total || 0;
     }
   } catch (error: any) {
     console.error("加载失败:", error);
@@ -55,6 +71,28 @@ async function loadAgents() {
   } finally {
     loading.value = false;
   }
+}
+
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
+
+async function goPrevPage() {
+  if (page.value <= 1) return;
+  page.value -= 1;
+  await loadAgents();
+}
+
+async function goNextPage() {
+  if (page.value >= totalPages.value) return;
+  page.value += 1;
+  await loadAgents();
+}
+
+async function applyPageJump() {
+  const target = Number(pageJumpInput.value);
+  if (!Number.isInteger(target) || target < 1 || target > totalPages.value) return;
+  page.value = target;
+  pageJumpInput.value = "";
+  await loadAgents();
 }
 
 // 删除Agent
@@ -126,12 +164,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="mx-auto mt-4 max-w-4xl px-4 pb-10 md:px-0">
+  <div class="mx-auto mt-4 max-w-[1020px] px-4 pb-10 md:px-0">
     <!-- 页面标题 -->
     <div class="mb-4 flex items-center justify-between">
       <div>
         <h1 class="text-2xl text-gray-900 font-bold">我的 Agent</h1>
-        <p class="text-sm text-gray-500 mt-1">管理您创建的AI角色</p>
+        <p class="text-sm text-gray-500 mt-1">管理您创建的AI角色（共 {{ total }} 个）</p>
       </div>
       <button
         @click="createNew"
@@ -165,18 +203,17 @@ onUnmounted(() => {
           <div
             class="w-24 h-24 rounded-xl overflow-hidden bg-white shadow-lg border-4 border-white flex-shrink-0"
           >
-            <img
-              :src="getDefaultAvatar(agent.name)"
+            <AvatarImage
+              :src="getAgentAvatar(agent)"
               :alt="agent.name"
-              class="w-full h-full object-cover"
+              img-class="w-full h-full object-cover"
             />
           </div>
 
           <!-- 主要内容 -->
           <div class="min-w-0 flex-1">
             <!-- 标题和标签 -->
-            <div class="flex items-start justify-between mb-2">
-              <div class="min-w-0">
+            <div class="mb-2 min-w-0">
                 <h3
                   class="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition"
                 >
@@ -188,12 +225,6 @@ onUnmounted(() => {
                 >
                   {{ agent.raw_config.headline }}
                 </p>
-              </div>
-              <span
-                class="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-600 flex-shrink-0 ml-2"
-              >
-                用户创建
-              </span>
             </div>
 
             <!-- 统计数据 -->
@@ -257,52 +288,27 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <!-- 话题标签和属性 -->
+            <!-- 标签 -->
             <div class="flex items-center gap-3 flex-wrap">
-              <!-- 话题标签 -->
               <div class="flex flex-wrap gap-1.5">
                 <span
-                  v-for="topic in agent.raw_config.topics.slice(0, 3)"
+                  v-for="topic in getAgentTopics(agent)"
                   :key="topic"
-                  class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600"
+                  class="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-600"
                 >
                   {{ topic }}
                 </span>
                 <span
-                  v-if="agent.raw_config.topics.length > 3"
-                  class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-50 text-gray-400"
+                  v-if="getAgentTopicOverflow(agent) > 0"
+                  class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-500"
                 >
-                  +{{ agent.raw_config.topics.length - 3 }}
+                  +{{ getAgentTopicOverflow(agent) }}
                 </span>
-              </div>
-
-              <!-- 活跃度和表达欲 -->
-              <div class="flex items-center gap-3 text-xs text-gray-500">
-                <span class="flex items-center gap-1">
-                  <span>活跃度:</span>
-                  <span
-                    :class="
-                      activityLevelColorMap[agent.raw_config.activity_level] ||
-                      'text-gray-600'
-                    "
-                    class="font-medium"
-                  >
-                    {{
-                      activityLevelMap[agent.raw_config.activity_level] ||
-                      agent.raw_config.activity_level
-                    }}
-                  </span>
-                </span>
-                <span class="flex items-center gap-1">
-                  <span>表达欲:</span>
-                  <span class="font-medium text-gray-700">
-                    {{
-                      agent.raw_config.expressiveness
-                        ? expressivenessMap[agent.raw_config.expressiveness] ||
-                          agent.raw_config.expressiveness
-                        : "平衡"
-                    }}
-                  </span>
+                <span
+                  v-if="getAgentStyleLabel(agent)"
+                  class="inline-flex items-center rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-600"
+                >
+                  {{ getAgentStyleLabel(agent) }}
                 </span>
               </div>
             </div>
@@ -338,6 +344,42 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+    </div>
+
+    <div
+      v-if="!loading && total > 0"
+      class="mt-6 flex flex-wrap items-center justify-center gap-3 py-2 text-sm text-gray-500"
+    >
+      <button
+        class="rounded border border-gray-200 bg-white px-3 py-1.5 transition hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+        :disabled="page <= 1"
+        @click="goPrevPage"
+      >
+        上一页
+      </button>
+      <span>{{ page }} / {{ totalPages }}</span>
+      <button
+        class="rounded border border-gray-200 bg-white px-3 py-1.5 transition hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+        :disabled="page >= totalPages"
+        @click="goNextPage"
+      >
+        下一页
+      </button>
+      <input
+        v-model="pageJumpInput"
+        type="number"
+        min="1"
+        :max="totalPages"
+        class="w-20 rounded border border-gray-200 px-2 py-1.5 text-center text-sm outline-none focus:border-blue-300"
+        placeholder="页码"
+        @keyup.enter="applyPageJump"
+      />
+      <button
+        class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 transition hover:bg-blue-100"
+        @click="applyPageJump"
+      >
+        跳转
+      </button>
     </div>
 
     <!-- 返回首页 -->

@@ -22,6 +22,7 @@ export function getAgents(params?: {
   page?: number;
   page_size?: number;
   is_system?: boolean;
+  owner_id?: number;
 }) {
   return request.get<ApiResponse<AgentListResponse>>("/agents", { params });
 }
@@ -30,20 +31,6 @@ export function getAgents(params?: {
  * 获取我的 Agent 列表
  */
 export function getMyAgents() {
-  // DEBUG: 检查 localStorage 和 token
-  const userData = localStorage.getItem("user");
-  console.log("[getMyAgents] localStorage user:", userData);
-  if (userData) {
-    try {
-      const parsed = JSON.parse(userData);
-      console.log(
-        "[getMyAgents] parsed token:",
-        parsed.token ? "exists" : "missing",
-      );
-    } catch (e) {
-      console.error("[getMyAgents] parse error:", e);
-    }
-  }
   return request.get<ApiResponse<AgentResponse[]>>("/agents/my");
 }
 

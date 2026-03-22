@@ -1,45 +1,55 @@
-<script setup lang="ts">
-import type { Hotspot } from "../api/types";
-import type { AnswerWithStats } from "../api/types";
+﻿<script setup lang="ts">
+import type {
+  AnswerWithStats,
+  Hotspot,
+  HotspotDatesResponse,
+} from "../api/types";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useStreamChannel } from "../composables/useStreamChannel";
-import { formatRichTextForDisplay } from "../utils/textRender";
+import { useToast } from "vue-toastification";
+import { getAnswerList } from "../api/answer";
 import {
   getHotspotDates,
   getHotspotDetail,
   getHotspotList,
 } from "../api/hotspot";
-import { getAnswerList } from "../api/answer";
+import { getQuestionDetail } from "../api/question";
+import { useStreamChannel } from "../composables/useStreamChannel";
+import { formatRichTextForDisplay } from "../utils/textRender";
 
 const router = useRouter();
 const route = useRoute();
+const toast = useToast();
 
 const hotspots = ref<Hotspot[]>([]);
 const loading = ref(false);
 const page = ref(1);
 const total = ref(0);
 const pageSize = 20;
+const pageJumpInput = ref("");
 
 const activeSource = ref<string>("");
 const availableDates = ref<string[]>([]);
+const allDates = ref<string[]>([]);
 const selectedDate = ref("");
+const calendarDate = ref("");
+const minSelectableDate = ref("");
+const maxSelectableDate = ref("");
 const datesLoading = ref(false);
 
 const selectedHotspot = ref<Hotspot | null>(null);
 const detailLoading = ref(false);
 const agentAnswers = ref<AnswerWithStats[]>([]);
 const agentAnswersLoading = ref(false);
-let refreshTimer: ReturnType<typeof setInterval> | null = null;
-let refreshDebounceTimer: number | null = null;
-const LIST_REFRESH_MS = 30000;
-const DETAIL_REFRESH_MS = 20000;
+const lastRefreshedAt = ref<Date | null>(null);
+const railDatePanelTop = ref(136);
 
 const sourceLabels: Record<string, string> = {
   "": "全部",
   zhihu: "知乎热榜",
   weibo: "微博热搜",
 };
+const sourceKeys = new Set(["", "zhihu", "weibo"]);
 
 const hotspotId = computed(() => {
   const raw = route.params.hotspotId;
@@ -50,6 +60,26 @@ const hotspotId = computed(() => {
 });
 
 const isDetailMode = computed(() => hotspotId.value > 0);
+const showSourceRanking = computed(
+  () => activeSource.value === "zhihu" || activeSource.value === "weibo",
+);
+const allDateSet = computed(
+  () => new Set(allDates.value.map((date) => normalizeDateKey(date))),
+);
+
+function normalizeDateKey(dateStr: string | undefined | null): string {
+  if (!dateStr) return "";
+  const text = String(dateStr).trim();
+  if (!text) return "";
+  if (text.includes("T")) return text.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const year = parsed.getFullYear();
+  const month = `${parsed.getMonth() + 1}`.padStart(2, "0");
+  const day = `${parsed.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 function stripHtml(html: string): string {
   const div = document.createElement("div");
@@ -78,20 +108,124 @@ function formatPlainContentToHtml(raw: string | undefined | null): string {
   return formatRichTextForDisplay(stripHtml(raw || ""));
 }
 
+function parseHeatValue(raw: string | undefined | null): number {
+  const text = String(raw || "")
+    .replace(/,/g, "")
+    .replace(/\s+/g, "")
+    .toLowerCase()
+    .trim();
+  if (!text) return 0;
+
+  const match = text.match(/(\d+(?:\.\d+)?)/);
+  if (!match) return 0;
+
+  let value = Number.parseFloat(match[1] || "0");
+  if (Number.isNaN(value)) return 0;
+
+  if (text.includes("亿")) value *= 100000000;
+  else if (text.includes("万") || text.includes("w")) value *= 10000;
+  else if (text.includes("千") || text.includes("k")) value *= 1000;
+
+  return value;
+}
+
+function formatHeatToWan(raw: string | undefined | null): string {
+  const heat = parseHeatValue(raw);
+  if (!heat) return "";
+
+  const wan = heat / 10000;
+  if (wan >= 1000) return `${Math.round(wan)}万`;
+  if (wan >= 100) return `${wan.toFixed(0)}万`;
+  if (wan >= 10) return `${wan.toFixed(1).replace(/\.0$/, "")}万`;
+  return `${wan.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}万`;
+}
+
+function formatDate(dateStr: string) {
+  if (!dateStr) return "";
+  return new Date(dateStr).toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatDateLabel(dateStr: string) {
+  if (!dateStr) return "";
+  const dateOnly = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr;
+  const d = new Date(`${dateOnly}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.round((today.getTime() - d.getTime()) / 86400000);
+  const label = d.toLocaleDateString("zh-CN", {
+    month: "short",
+    day: "numeric",
+  });
+  if (diff === 0) return `${label}（今天）`;
+  if (diff === 1) return `${label}（昨天）`;
+  return label;
+}
+
+function openHotspotOriginalLink(hotspot: Hotspot) {
+  if (!hotspot.url) return;
+  window.open(hotspot.url, "_blank", "noopener,noreferrer");
+}
+
 async function loadDates() {
   datesLoading.value = true;
   try {
     const res = await getHotspotDates(activeSource.value || undefined);
     if (res.data.code === 200 && res.data.data) {
-      availableDates.value = res.data.data;
-      if (availableDates.value.length > 0 && !selectedDate.value) {
-        selectedDate.value = availableDates.value[0] ?? "";
+      const payload = res.data.data as HotspotDatesResponse | string[];
+      const datesRaw = Array.isArray(payload) ? payload : payload.dates || [];
+      const dates = datesRaw
+        .map((date) => normalizeDateKey(date))
+        .filter(Boolean);
+      const recentRaw = Array.isArray(payload)
+        ? dates
+        : (payload.recent_dates || dates)
+            .map((date) => normalizeDateKey(date))
+            .filter(Boolean);
+      const recentDates = recentRaw.length > 0 ? recentRaw : dates.slice(0, 7);
+
+      allDates.value = dates;
+      availableDates.value = recentDates;
+      minSelectableDate.value = Array.isArray(payload)
+        ? dates[dates.length - 1] || ""
+        : normalizeDateKey(payload.min_date);
+      maxSelectableDate.value = Array.isArray(payload)
+        ? dates[0] || ""
+        : normalizeDateKey(payload.max_date);
+
+      if (
+        selectedDate.value &&
+        ((minSelectableDate.value &&
+          selectedDate.value < minSelectableDate.value) ||
+          (maxSelectableDate.value &&
+            selectedDate.value > maxSelectableDate.value))
+      ) {
+        selectedDate.value = "";
       }
+
+      const queryDate = normalizeDateKey(
+        Array.isArray(route.query.date)
+          ? route.query.date[0]
+          : String(route.query.date || ""),
+      );
+      if (queryDate && allDateSet.value.has(queryDate)) {
+        selectedDate.value = queryDate;
+      } else if (!selectedDate.value) {
+        selectedDate.value =
+          availableDates.value[0] || maxSelectableDate.value || "";
+      }
+      calendarDate.value = selectedDate.value;
+      syncListRouteQuery();
     }
   } catch (error) {
     console.error("加载日期列表失败:", error);
   } finally {
     datesLoading.value = false;
+    scheduleRailDatePanelPositionUpdate();
   }
 }
 
@@ -108,6 +242,7 @@ async function loadHotspots() {
     if (res.data.code === 200 && res.data.data) {
       hotspots.value = res.data.data.hotspots || [];
       total.value = res.data.data.total;
+      lastRefreshedAt.value = new Date();
     }
   } catch (error) {
     console.error("加载热点失败:", error);
@@ -125,7 +260,7 @@ async function loadDetailById(id: number) {
     const res = await getHotspotDetail(id);
     if (res.data.code === 200 && res.data.data) {
       selectedHotspot.value = res.data.data;
-
+      lastRefreshedAt.value = new Date();
       if (
         selectedHotspot.value.source === "zhihu" &&
         selectedHotspot.value.question_id
@@ -154,95 +289,139 @@ async function loadAgentAnswers(questionId: number) {
   }
 }
 
-function openDetail(hotspot: Hotspot) {
-  router.push(`/hotspots/${hotspot.id}`);
+function selectDate(date: string) {
+  const normalized = normalizeDateKey(date);
+  selectedDate.value = normalized;
+  calendarDate.value = normalized;
+  page.value = 1;
+  syncListRouteQuery();
+}
+
+function applyCalendarDate() {
+  const target = normalizeDateKey(calendarDate.value);
+  if (!target) return;
+  if (minSelectableDate.value && target < minSelectableDate.value) return;
+  if (maxSelectableDate.value && target > maxSelectableDate.value) return;
+  if (!allDateSet.value.has(target)) {
+    toast.warning("该日期没有热点数据，请选择有热点的日期");
+    calendarDate.value = selectedDate.value;
+    return;
+  }
+  selectDate(target);
+}
+
+function updateRailDatePanelPosition() {
+  if (window.innerWidth < 1024 || isDetailMode.value) return;
+
+  const refreshEl = document.querySelector(".right-rail-refresh") as HTMLElement | null;
+  const copyrightEl = document.querySelector(".global-copyright") as HTMLElement | null;
+  const panelEl = document.querySelector(".right-rail-date-panel") as HTMLElement | null;
+  if (!refreshEl || !copyrightEl || !panelEl) return;
+
+  const refreshBottom = refreshEl.getBoundingClientRect().bottom;
+  const copyrightTop = copyrightEl.getBoundingClientRect().top;
+  const panelHeight = panelEl.getBoundingClientRect().height;
+  const freeSpace = copyrightTop - refreshBottom - panelHeight;
+  const nextTop = refreshBottom + freeSpace / 2;
+  railDatePanelTop.value = Math.max(Math.round(refreshBottom + 12), Math.round(nextTop));
+}
+
+function scheduleRailDatePanelPositionUpdate() {
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      updateRailDatePanelPosition();
+    });
+  });
+}
+
+function syncListRouteQuery() {
+  if (isDetailMode.value) return;
+  const nextQuery: Record<string, string> = {};
+  if (activeSource.value) {
+    nextQuery.source = activeSource.value;
+  }
+  if (selectedDate.value) {
+    nextQuery.date = selectedDate.value;
+  }
+
+  const currentSource = Array.isArray(route.query.source)
+    ? String(route.query.source[0] || "")
+    : String(route.query.source || "");
+  const currentDate = normalizeDateKey(
+    Array.isArray(route.query.date)
+      ? route.query.date[0]
+      : String(route.query.date || ""),
+  );
+
+  const sameSource = (nextQuery.source || "") === currentSource;
+  const sameDate = (nextQuery.date || "") === currentDate;
+  if (sameSource && sameDate) return;
+
+  void router.replace({ path: "/hotspots", query: nextQuery });
+}
+
+function handleSourceSelect(source: string) {
+  if (!sourceKeys.has(source)) return;
+  if (activeSource.value === source) return;
+  activeSource.value = source;
+}
+
+function getDisplayRank(index: number): number {
+  return (page.value - 1) * pageSize + index + 1;
+}
+
+function applyPageJump() {
+  const target = Number(pageJumpInput.value);
+  if (!Number.isInteger(target)) return;
+  const maxPage = Math.max(1, Math.ceil(total.value / pageSize));
+  if (target < 1 || target > maxPage) return;
+  if (target === page.value) return;
+  page.value = target;
+  pageJumpInput.value = "";
 }
 
 function backToList() {
   router.push("/hotspots");
 }
 
-function goToQuestion(questionId: number) {
-  router.push(`/question/${questionId}`);
-}
-
-function formatDate(dateStr: string) {
-  if (!dateStr) return "";
-  return new Date(dateStr).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-const avatarColors = [
-  "#4F46E5",
-  "#7C3AED",
-  "#2563EB",
-  "#0891B2",
-  "#059669",
-  "#D97706",
-  "#DC2626",
-  "#DB2777",
-  "#9333EA",
-  "#0D9488",
-];
-
-function getAvatarColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < (name || "").length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return avatarColors[Math.abs(hash) % avatarColors.length] ?? "#4F46E5";
-}
-
-function formatDateLabel(dateStr: string) {
-  if (!dateStr) return "";
-  const dateOnly = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr;
-  const d = new Date(dateOnly + "T00:00:00");
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diff = Math.round((today.getTime() - d.getTime()) / 86400000);
-  const label = d.toLocaleDateString("zh-CN", {
-    month: "short",
-    day: "numeric",
-  });
-  if (diff === 0) return `${label} (今天)`;
-  if (diff === 1) return `${label} (昨天)`;
-  return label;
-}
-
-function selectDate(date: string) {
-  selectedDate.value = date;
-  page.value = 1;
-}
-
-function scheduleRealtimeRefresh() {
-  if (refreshDebounceTimer !== null) {
-    window.clearTimeout(refreshDebounceTimer);
-  }
-  refreshDebounceTimer = window.setTimeout(() => {
-    if (isDetailMode.value && hotspotId.value > 0) {
-      void loadDetailById(hotspotId.value);
+async function goToQuestion(hotspot: Hotspot) {
+  if (!hotspot.question_id) return;
+  try {
+    const res = await getQuestionDetail(hotspot.question_id);
+    if (!(res.data.code === 200 && res.data.data)) {
+      toast.warning("关联问答不存在或已删除");
       return;
     }
-    if (!isDetailMode.value && selectedDate.value) {
-      void loadDates();
-      void loadHotspots();
+    if (res.data.data.type === "debate") {
+      toast.info("该热点关联的是自问自答，暂不支持跳转到问答页");
+      return;
     }
-  }, 900);
+
+    router.push({
+      path: `/question/${hotspot.question_id}`,
+    });
+  } catch {
+    toast.warning("关联问答不存在或已删除");
+  }
 }
 
-const hotspotStream = useStreamChannel("hotspots", () => {
-  scheduleRealtimeRefresh();
-});
+async function refreshCurrentView() {
+  if (isDetailMode.value && hotspotId.value > 0) {
+    await loadDetailById(hotspotId.value);
+    return;
+  }
+  await loadDates();
+  if (selectedDate.value) {
+    await loadHotspots();
+  }
+}
 
 const questionStream = useStreamChannel("questions", (message) => {
   const payload = message.data || {};
   if (
     selectedHotspot.value?.question_id &&
-    Number(payload?.question_id || 0) === Number(selectedHotspot.value.question_id)
+    Number(payload?.question_id || 0) ===
+      Number(selectedHotspot.value.question_id)
   ) {
     void loadAgentAnswers(selectedHotspot.value.question_id);
   }
@@ -251,63 +430,103 @@ const questionStream = useStreamChannel("questions", (message) => {
 watch(activeSource, () => {
   if (isDetailMode.value) return;
   selectedDate.value = "";
-  loadDates();
+  void loadDates();
 });
 
 watch(selectedDate, () => {
   if (isDetailMode.value) return;
   page.value = 1;
-  loadHotspots();
+  void loadHotspots();
 });
 
 watch(page, () => {
   if (isDetailMode.value) return;
-  loadHotspots();
+  void loadHotspots();
 });
 
 watch(hotspotId, (id) => {
   if (id > 0) {
-    loadDetailById(id);
+    void loadDetailById(id);
   }
 });
+
+watch(
+  () => [route.query.source, route.query.date],
+  ([sourceQuery, dateQuery]) => {
+    if (isDetailMode.value) return;
+
+    const nextSource = Array.isArray(sourceQuery)
+      ? String(sourceQuery[0] || "")
+      : String(sourceQuery || "");
+    if (sourceKeys.has(nextSource) && nextSource !== activeSource.value) {
+      activeSource.value = nextSource;
+      return;
+    }
+
+    const nextDate = normalizeDateKey(
+      Array.isArray(dateQuery) ? dateQuery[0] : String(dateQuery || ""),
+    );
+    if (
+      nextDate &&
+      nextDate !== selectedDate.value &&
+      allDateSet.value.has(nextDate)
+    ) {
+      selectedDate.value = nextDate;
+      calendarDate.value = nextDate;
+      page.value = 1;
+    }
+  },
+);
 
 onMounted(() => {
   if (isDetailMode.value) {
-    loadDetailById(hotspotId.value);
-
-    refreshTimer = setInterval(() => {
-      if (hotspotId.value > 0) {
-        loadDetailById(hotspotId.value);
-      }
-    }, DETAIL_REFRESH_MS);
+    void loadDetailById(hotspotId.value);
     return;
   }
-
-  loadDates();
-  refreshTimer = setInterval(() => {
-    if (!isDetailMode.value && selectedDate.value) {
-      loadDates();
-      loadHotspots();
-    }
-  }, LIST_REFRESH_MS);
+  const sourceFromQuery = Array.isArray(route.query.source)
+    ? String(route.query.source[0] || "")
+    : String(route.query.source || "");
+  if (sourceKeys.has(sourceFromQuery)) {
+    activeSource.value = sourceFromQuery;
+  }
+  void loadDates();
+  scheduleRailDatePanelPositionUpdate();
+  window.addEventListener("resize", scheduleRailDatePanelPositionUpdate);
 });
 
 onUnmounted(() => {
-  hotspotStream.stop();
   questionStream.stop();
-  if (refreshDebounceTimer !== null) {
-    window.clearTimeout(refreshDebounceTimer);
-    refreshDebounceTimer = null;
-  }
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-    refreshTimer = null;
-  }
+  window.removeEventListener("resize", scheduleRailDatePanelPositionUpdate);
 });
 </script>
 
 <template>
-  <div class="mx-auto mt-4 max-w-4xl px-4 pb-8 md:px-0">
+  <div class="hotspots-shell mx-auto mt-4 max-w-[1020px] px-4 pb-8 md:px-0">
+    <div class="right-rail-refresh">
+      <div class="right-rail-refresh-inner">
+        <span
+          v-if="lastRefreshedAt"
+          class="hidden text-xs text-slate-500 sm:inline"
+        >
+          上次刷新 {{ lastRefreshedAt.toLocaleTimeString("zh-CN") }}
+        </span>
+        <button
+          class="group flex h-9 w-9 items-center justify-center rounded-full border border-sky-200 bg-white text-sky-700 transition hover:bg-sky-50 disabled:opacity-50"
+          :disabled="loading || detailLoading"
+          @click="refreshCurrentView"
+        >
+          <span
+            class="i-mdi-refresh text-lg"
+            :class="
+              loading || detailLoading
+                ? 'animate-spin'
+                : 'transition-transform duration-300 group-hover:rotate-180'
+            "
+          />
+        </button>
+      </div>
+    </div>
+
     <template v-if="isDetailMode">
       <button
         class="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-gray-700"
@@ -322,7 +541,7 @@ onUnmounted(() => {
         class="rounded-sm bg-white py-12 text-center text-gray-400 shadow-sm"
       >
         <div
-          class="i-mdi-loading animate-spin inline-block text-2xl text-blue-400 mb-2"
+          class="i-mdi-loading mb-2 inline-block animate-spin text-2xl text-blue-400"
         />
         <div>加载详情中...</div>
       </div>
@@ -344,55 +563,53 @@ onUnmounted(() => {
                 }}
               </span>
               <span
-                v-if="selectedHotspot.source === 'zhihu'"
-                class="text-xs text-gray-400"
+                v-if="formatHeatToWan(selectedHotspot.heat)"
+                class="inline-flex items-center gap-1 text-xs text-gray-400"
               >
-                #{{ selectedHotspot.rank }}
+                <span class="i-mdi-fire text-orange-500" />
+                {{ formatHeatToWan(selectedHotspot.heat) }}
               </span>
-              <span v-if="selectedHotspot.heat" class="text-xs text-gray-400"
-                >🔥 {{ selectedHotspot.heat }}</span
-              >
             </div>
 
-            <h1 class="mb-3 text-2xl text-[#1a1a1a] font-bold leading-normal">
+            <h1 class="mb-3 text-2xl font-bold leading-normal text-[#1a1a1a]">
               {{ selectedHotspot.title }}
             </h1>
 
             <div
               v-if="selectedHotspot.content"
-              class="mb-4 text-[15px] text-gray-800 formatted-content"
+              class="formatted-content mb-4 text-[15px] text-gray-800"
               v-html="formatPlainContentToHtml(selectedHotspot.content)"
-            >
-            </div>
+            />
 
             <div class="flex flex-wrap items-center gap-3">
               <span class="text-sm text-gray-400">{{
                 formatDateLabel(selectedHotspot.hotspot_date)
               }}</span>
-              <a
-                v-if="selectedHotspot.url"
-                :href="selectedHotspot.url"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-sm text-blue-500 hover:text-blue-600"
-              >
-                查看原文 ↗
-              </a>
-              <button
-                v-if="selectedHotspot.question_id"
-                class="ml-auto flex items-center gap-1 border border-blue-600 rounded bg-white px-3 py-1.5 text-sm text-blue-600 font-medium transition-colors hover:bg-blue-50"
-                @click="goToQuestion(selectedHotspot.question_id!)"
-              >
-                <span class="i-mdi-message-text-outline" />
-                查看 Agent 问答
-              </button>
+              <div class="ml-auto flex flex-wrap items-center gap-3">
+                <button
+                  v-if="selectedHotspot.url"
+                  type="button"
+                  class="cursor-pointer border-none bg-transparent p-0 text-blue-500 hover:text-blue-600"
+                  @click="openHotspotOriginalLink(selectedHotspot)"
+                >
+                  查看原文 ->
+                </button>
+                <button
+                  v-if="selectedHotspot.question_id"
+                  type="button"
+                  class="cursor-pointer border-none bg-transparent p-0 text-blue-500 hover:text-blue-600"
+                  @click="goToQuestion(selectedHotspot)"
+                >
+                  查看问答 ->
+                </button>
+              </div>
             </div>
           </div>
 
           <template v-if="selectedHotspot.source === 'zhihu'">
-            <div class="border-t border-gray-100 p-4 md:p-6 bg-[#fafcff]">
+            <div class="bg-[#fafcff] p-4 md:p-6">
               <div class="mb-4 flex items-center justify-between">
-                <h3 class="text-base md:text-lg font-bold text-[#1a1a1a]">
+                <h3 class="text-base font-bold text-[#1a1a1a] md:text-lg">
                   知乎原回答 vs Agent 回答
                 </h3>
                 <span class="text-xs text-gray-400">同题对比</span>
@@ -419,18 +636,13 @@ onUnmounted(() => {
                       <div
                         v-for="answer in selectedHotspot.answers"
                         :key="`zhihu-${answer.id}`"
-                        class="waterfall-card border border-blue-100/70 rounded-lg bg-white p-4 shadow-sm"
+                        class="waterfall-card rounded-lg border border-blue-100/70 bg-white p-4 shadow-sm"
                       >
                         <div class="mb-2 flex items-center gap-2">
                           <div
-                            class="h-7 w-7 flex-shrink-0 rounded-full flex items-center justify-center text-white font-bold text-xs"
-                            :style="{
-                              backgroundColor: getAvatarColor(
-                                answer.author_name,
-                              ),
-                            }"
+                            class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-blue-500 text-xs font-bold text-white"
                           >
-                            {{ answer.author_name?.[0] || "匿" }}
+                            {{ answer.author_name?.[0] || "?" }}
                           </div>
                           <div class="text-sm font-semibold text-[#121212]">
                             {{ answer.author_name || "匿名用户" }}
@@ -442,14 +654,14 @@ onUnmounted(() => {
                         </div>
 
                         <div
-                          class="rich-text text-[14px] text-[#121212] leading-relaxed hotspot-answer-content"
+                          class="hotspot-answer-content rich-text text-[14px] leading-relaxed text-[#121212]"
                           v-html="sanitizeHtml(answer.content)"
                         />
                       </div>
                     </div>
                   </div>
 
-                  <div v-else class="py-10 text-center text-gray-400 text-sm">
+                  <div v-else class="py-10 text-center text-sm text-gray-400">
                     暂无知乎回答数据
                   </div>
                 </section>
@@ -468,7 +680,7 @@ onUnmounted(() => {
 
                   <div
                     v-if="agentAnswersLoading"
-                    class="py-10 text-center text-gray-400 text-sm"
+                    class="py-10 text-center text-sm text-gray-400"
                   >
                     加载 Agent 回答中...
                   </div>
@@ -478,16 +690,11 @@ onUnmounted(() => {
                       <div
                         v-for="answer in agentAnswers"
                         :key="`agent-${answer.id}`"
-                        class="waterfall-card border border-emerald-100/70 rounded-lg bg-white p-4 shadow-sm"
+                        class="waterfall-card rounded-lg border border-emerald-100/70 bg-white p-4 shadow-sm"
                       >
                         <div class="mb-2 flex items-center gap-2">
                           <div
-                            class="h-7 w-7 flex-shrink-0 rounded-full flex items-center justify-center text-white font-bold text-xs"
-                            :style="{
-                              backgroundColor: getAvatarColor(
-                                answer.user?.name || 'Agent',
-                              ),
-                            }"
+                            class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white"
                           >
                             {{ (answer.user?.name || "A")[0] }}
                           </div>
@@ -501,16 +708,15 @@ onUnmounted(() => {
                         </div>
 
                         <div
-                          class="text-[14px] text-[#121212] leading-relaxed formatted-content"
+                          class="formatted-content text-[14px] leading-relaxed text-[#121212]"
                           v-html="formatPlainContentToHtml(answer.content)"
-                        >
-                        </div>
+                        />
                       </div>
                     </div>
                   </div>
 
-                  <div v-else class="py-10 text-center text-gray-400 text-sm">
-                    该热点尚未生成 Agent 回答
+                  <div v-else class="py-10 text-center text-sm text-gray-400">
+                    当前热点尚未生成 Agent 回答
                   </div>
                 </section>
               </div>
@@ -536,10 +742,10 @@ onUnmounted(() => {
             class="rounded-md px-4 py-1.5 text-sm transition-all"
             :class="
               activeSource === key
-                ? 'bg-white text-blue-600 font-medium shadow-sm'
+                ? 'bg-white font-medium text-blue-600 shadow-sm'
                 : 'text-gray-600 hover:text-gray-900'
             "
-            @click="activeSource = key as string"
+            @click="handleSourceSelect(key as string)"
           >
             {{ label }}
           </button>
@@ -548,102 +754,169 @@ onUnmounted(() => {
         <span class="ml-auto text-sm text-gray-400">共 {{ total }} 条热点</span>
       </div>
 
-      <div class="flex gap-5">
-        <div class="w-32 flex-shrink-0">
-          <div class="sticky top-20">
-            <h4
-              class="mb-2 px-2 text-xs font-medium text-gray-400 uppercase tracking-wider"
-            >
-              期次
-            </h4>
-            <div
-              v-if="datesLoading"
-              class="py-4 text-center text-xs text-gray-400"
-            >
-              加载中...
-            </div>
-            <div
-              v-else-if="availableDates.length === 0"
-              class="py-4 text-center text-xs text-gray-400"
-            >
-              暂无数据
-            </div>
-            <div v-else class="space-y-0.5">
-              <button
-                v-for="date in availableDates"
-                :key="date"
-                class="w-full rounded-md px-3 py-2 text-left text-sm transition-all"
-                :class="
-                  selectedDate === date
-                    ? 'bg-blue-50 text-blue-700 font-medium'
-                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
-                "
-                @click="selectDate(date)"
-              >
-                {{ formatDateLabel(date) }}
-              </button>
-            </div>
+      <div
+        class="right-rail-date-panel fixed z-10 hidden w-[196px] lg:block"
+        :style="{ right: 'var(--rail-offset)', top: `${railDatePanelTop}px` }"
+      >
+        <section class="max-h-[calc(100vh-300px)] overflow-auto rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
+          <div class="mb-2 text-sm font-semibold text-gray-500">日期</div>
+          <div v-if="datesLoading" class="py-2 text-center text-xs text-gray-400">
+            加载中...
           </div>
+          <div
+            v-else-if="availableDates.length === 0"
+            class="py-2 text-center text-xs text-gray-400"
+          >
+            暂无日期数据
+          </div>
+          <div v-else class="space-y-1.5">
+            <button
+              v-for="date in availableDates"
+              :key="date"
+              class="block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors"
+              :class="
+                selectedDate === date
+                  ? 'bg-blue-50 text-blue-600'
+                  : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+              "
+              @click="selectDate(date)"
+            >
+              {{ formatDateLabel(date) }}
+            </button>
+          </div>
+
+          <template v-if="minSelectableDate && maxSelectableDate">
+            <div class="my-3 h-px bg-gray-100" />
+            <div class="mb-2 text-sm font-semibold text-gray-500">选择日期</div>
+            <input
+              v-model="calendarDate"
+              type="date"
+              :min="minSelectableDate"
+              :max="maxSelectableDate"
+              class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-300"
+            />
+            <button
+              class="mt-2 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-100"
+              @click="applyCalendarDate"
+            >
+              确定
+            </button>
+          </template>
+        </section>
+      </div>
+
+      <section class="mb-4 space-y-3 rounded-2xl bg-white p-4 shadow-sm lg:hidden">
+        <div class="text-sm font-semibold text-gray-500">日期</div>
+        <div v-if="datesLoading" class="py-1 text-center text-xs text-gray-400">加载中...</div>
+        <div
+          v-else-if="availableDates.length === 0"
+          class="py-1 text-center text-xs text-gray-400"
+        >
+          暂无日期数据
+        </div>
+        <div v-else class="grid grid-cols-2 gap-2">
+          <button
+            v-for="date in availableDates"
+            :key="date"
+            class="rounded-lg px-3 py-2 text-left text-sm transition-colors"
+            :class="
+              selectedDate === date
+                ? 'bg-blue-50 text-blue-600'
+                : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+            "
+            @click="selectDate(date)"
+          >
+            {{ formatDateLabel(date) }}
+          </button>
         </div>
 
-        <div class="min-w-0 flex-1">
+        <div v-if="minSelectableDate && maxSelectableDate" class="grid grid-cols-[1fr_auto] items-center gap-2">
+          <input
+            v-model="calendarDate"
+            type="date"
+            :min="minSelectableDate"
+            :max="maxSelectableDate"
+            class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-300"
+          />
+          <button
+            class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-100"
+            @click="applyCalendarDate"
+          >
+            确定
+          </button>
+        </div>
+      </section>
+
+      <section class="min-w-0">
           <div class="space-y-2">
             <div
-              v-for="hotspot in hotspots"
+              v-for="(hotspot, index) in hotspots"
               :key="hotspot.id"
-              class="cursor-pointer rounded-sm bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
-              @click="openDetail(hotspot)"
+              class="rounded-sm bg-white p-5 shadow-sm"
             >
               <div class="flex items-start gap-3">
                 <span
-                  v-if="hotspot.source === 'zhihu'"
+                  v-if="showSourceRanking"
                   class="mt-0.5 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-xs font-bold"
                   :class="
-                    hotspot.rank <= 3
+                    getDisplayRank(index) <= 3
                       ? 'bg-red-500 text-white'
                       : 'bg-gray-200 text-gray-600'
                   "
                 >
-                  {{ hotspot.rank }}
+                  {{ getDisplayRank(index) }}
                 </span>
 
                 <div class="min-w-0 flex-1">
                   <h3
-                    class="text-lg text-[#121212] font-bold leading-snug hover:text-blue-600"
+                    class="text-lg font-bold leading-snug text-[#121212] hover:text-blue-600"
                   >
                     {{ hotspot.title }}
                   </h3>
 
-                  <p
-                    v-if="hotspot.content"
-                    class="mt-2 text-[15px] text-gray-600 leading-relaxed line-clamp-2"
-                  >
-                    {{ stripHtml(hotspot.content).slice(0, 150)
-                    }}{{ stripHtml(hotspot.content).length > 150 ? "..." : "" }}
-                  </p>
-
-                  <div
-                    class="mt-3 flex items-center gap-3 text-xs text-gray-400"
-                  >
+                  <div class="hotspot-meta-row mt-3 text-xs text-gray-400">
                     <span
-                      class="rounded-full px-2 py-0.5 text-xs font-medium"
+                      class="meta-source font-medium"
                       :class="
                         hotspot.source === 'zhihu'
-                          ? 'bg-blue-50 text-blue-600'
-                          : 'bg-orange-50 text-orange-600'
+                          ? 'text-blue-600'
+                          : 'text-orange-500'
                       "
                     >
                       {{ hotspot.source === "zhihu" ? "知乎" : "微博" }}
                     </span>
-                    <span v-if="hotspot.heat">🔥 {{ hotspot.heat }}</span>
-                    <span>{{ formatDate(hotspot.crawled_at) }}</span>
-                    <span
-                      v-if="hotspot.question_id"
-                      class="cursor-pointer text-blue-500 hover:text-blue-600"
-                      @click.stop="goToQuestion(hotspot.question_id)"
-                    >
-                      查看问答 →
+                    <span class="meta-heat inline-flex items-center gap-1">
+                      <span class="i-mdi-fire text-orange-500" />
+                      {{ formatHeatToWan(hotspot.heat) || "--" }}
                     </span>
+                    <span class="meta-time">{{ formatDate(hotspot.crawled_at) }}</span>
+                    <button
+                      v-if="hotspot.url"
+                      type="button"
+                      class="meta-link"
+                      @click.stop="openHotspotOriginalLink(hotspot)"
+                    >
+                      查看原文 ->
+                    </button>
+                    <span v-else class="meta-link-placeholder">--</span>
+                    <button
+                      v-if="hotspot.question_id"
+                      type="button"
+                      class="meta-link"
+                      @click.stop="goToQuestion(hotspot)"
+                    >
+                      查看问答 ->
+                    </button>
+                    <span v-else class="meta-link-placeholder">--</span>
+                    <button
+                      v-if="hotspot.source === 'zhihu'"
+                      type="button"
+                      class="meta-link"
+                      @click.stop="router.push(`/hotspots/${hotspot.id}`)"
+                    >
+                      查看agent与真人回答对比 ->
+                    </button>
+                    <span v-else class="meta-link-placeholder">--</span>
                   </div>
                 </div>
               </div>
@@ -661,33 +934,48 @@ onUnmounted(() => {
               class="rounded-sm bg-white py-12 text-center text-gray-400 shadow-sm"
             >
               <div
-                class="i-mdi-fire inline-block text-4xl text-gray-300 mb-2"
+                class="i-mdi-fire mb-2 inline-block text-4xl text-gray-300"
               />
-              <div>{{ selectedDate || "未选择日期" }} 暂无热点数据</div>
+              <div>{{ selectedDate || "所选日期" }} 暂无热点数据</div>
             </div>
           </div>
 
-          <div v-if="total > pageSize" class="mt-6 flex justify-center gap-2">
+          <div
+            v-if="total > pageSize"
+            class="mt-6 flex flex-wrap items-center justify-center gap-3 py-2 text-sm text-gray-500"
+          >
             <button
-              class="border border-gray-200 rounded-full px-4 py-1.5 text-sm transition-colors hover:bg-gray-50 disabled:opacity-40"
+              class="rounded border border-gray-200 bg-white px-3 py-1.5 transition hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
               :disabled="page <= 1"
               @click="page--"
             >
               上一页
             </button>
-            <span class="px-3 py-1.5 text-sm text-gray-500"
-              >{{ page }} / {{ Math.ceil(total / pageSize) }}</span
-            >
+            <span>{{ page }} / {{ Math.ceil(total / pageSize) }}</span>
             <button
-              class="border border-gray-200 rounded-full px-4 py-1.5 text-sm transition-colors hover:bg-gray-50 disabled:opacity-40"
+              class="rounded border border-gray-200 bg-white px-3 py-1.5 transition hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
               :disabled="page >= Math.ceil(total / pageSize)"
               @click="page++"
             >
               下一页
             </button>
+            <input
+              v-model="pageJumpInput"
+              type="number"
+              min="1"
+              :max="Math.ceil(total / pageSize)"
+              class="w-20 rounded border border-gray-200 px-2 py-1.5 text-center text-sm outline-none focus:border-blue-300"
+              placeholder="页码"
+              @keyup.enter="applyPageJump"
+            />
+            <button
+              class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 transition hover:bg-blue-100"
+              @click="applyPageJump"
+            >
+              跳转
+            </button>
           </div>
-        </div>
-      </div>
+      </section>
     </template>
   </div>
 </template>
@@ -770,14 +1058,6 @@ onUnmounted(() => {
   margin-bottom: 4px;
 }
 
-.line-clamp-2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
 .waterfall-list {
   display: grid;
   gap: 12px;
@@ -785,5 +1065,50 @@ onUnmounted(() => {
 
 .waterfall-card {
   break-inside: avoid;
+}
+
+.hotspot-meta-row {
+  display: grid;
+  grid-template-columns: 52px 84px 96px 92px 92px 92px;
+  align-items: center;
+  column-gap: 12px;
+}
+
+.meta-source,
+.meta-heat,
+.meta-time,
+.meta-link,
+.meta-link-placeholder {
+  min-width: 0;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.meta-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: #3b82f6;
+  cursor: pointer;
+}
+
+.meta-link:hover {
+  color: #2563eb;
+}
+
+.meta-link-placeholder {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (max-width: 900px) {
+  .hotspot-meta-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: 6px;
+  }
+
+  .meta-link-placeholder {
+    display: none;
+  }
 }
 </style>

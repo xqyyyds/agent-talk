@@ -3,7 +3,10 @@ package controller
 import (
 	"errors"
 	"net/http"
+	"regexp"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"backend/internal/database"
@@ -47,6 +50,47 @@ type UpdateHotspotStatusRequest struct {
 	QuestionID *uint  `json:"question_id"`
 }
 
+var hotspotHeatPattern = regexp.MustCompile(`([0-9]+(?:\.[0-9]+)?)`)
+
+func parseHeatScore(heat string) float64 {
+	value := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(heat, ",", "")))
+	if value == "" {
+		return 0
+	}
+
+	match := hotspotHeatPattern.FindStringSubmatch(value)
+	if len(match) < 2 {
+		return 0
+	}
+
+	number, err := strconv.ParseFloat(match[1], 64)
+	if err != nil {
+		return 0
+	}
+
+	switch {
+	case strings.Contains(value, "亿"):
+		number *= 100000000
+	case strings.Contains(value, "万"), strings.Contains(value, "w"):
+		number *= 10000
+	case strings.Contains(value, "千"), strings.Contains(value, "k"):
+		number *= 1000
+	}
+	return number
+}
+
+func hotspotSortLess(a, b model.Hotspot) bool {
+	aHeat := parseHeatScore(a.Heat)
+	bHeat := parseHeatScore(b.Heat)
+	if aHeat != bHeat {
+		return aHeat > bHeat
+	}
+	if !a.CrawledAt.Equal(b.CrawledAt) {
+		return a.CrawledAt.After(b.CrawledAt)
+	}
+	return a.ID > b.ID
+}
+
 func BatchCreateHotspots(c *gin.Context) {
 	var req BatchCreateHotspotsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -77,7 +121,9 @@ func BatchCreateHotspots(c *gin.Context) {
 		}
 
 		var existing model.Hotspot
-		result := database.DB.Where(model.Hotspot{Source: hotspot.Source, SourceID: hotspot.SourceID}).First(&existing)
+		result := database.DB.
+			Where("source = ? AND source_id = ? AND hotspot_date = ?", hotspot.Source, hotspot.SourceID, hotspot.HotspotDate).
+			First(&existing)
 		if result.Error == nil {
 			if err := database.DB.Model(&existing).Updates(map[string]any{
 				"title":        hotspot.Title,
@@ -269,7 +315,27 @@ func GetHotspotDates(c *gin.Context) {
 	var dates []string
 	query.Pluck("d", &dates)
 
-	c.JSON(http.StatusOK, Response{Code: 200, Data: dates})
+	recentDates := dates
+	if len(recentDates) > 7 {
+		recentDates = recentDates[:7]
+	}
+
+	minDate := ""
+	maxDate := ""
+	if len(dates) > 0 {
+		maxDate = dates[0]
+		minDate = dates[len(dates)-1]
+	}
+
+	c.JSON(http.StatusOK, Response{
+		Code: 200,
+		Data: gin.H{
+			"dates":        dates,
+			"recent_dates": recentDates,
+			"min_date":     minDate,
+			"max_date":     maxDate,
+		},
+	})
 }
 
 func GetHotspotList(c *gin.Context) {
@@ -296,14 +362,86 @@ func GetHotspotList(c *gin.Context) {
 		query = query.Where("source = ?", source)
 	}
 
-	var total int64
-	query.Count(&total)
+	allHotspots := make([]model.Hotspot, 0, 128)
+	if err := query.Find(&allHotspots).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, Response{Code: 500, Message: "query hotspot list failed"})
+		return
+	}
 
-	var hotspots []model.Hotspot
-	query.Order("source ASC, rank ASC").
-		Offset((page - 1) * pageSize).
-		Limit(pageSize).
-		Find(&hotspots)
+	if source == "" {
+		zhihuList := make([]model.Hotspot, 0, len(allHotspots))
+		weiboList := make([]model.Hotspot, 0, len(allHotspots))
+		otherList := make([]model.Hotspot, 0, len(allHotspots))
+
+		for _, item := range allHotspots {
+			switch item.Source {
+			case model.HotspotSourceZhihu:
+				zhihuList = append(zhihuList, item)
+			case model.HotspotSourceWeibo:
+				weiboList = append(weiboList, item)
+			default:
+				otherList = append(otherList, item)
+			}
+		}
+
+		sort.SliceStable(zhihuList, func(i, j int) bool {
+			return hotspotSortLess(zhihuList[i], zhihuList[j])
+		})
+		sort.SliceStable(weiboList, func(i, j int) bool {
+			return hotspotSortLess(weiboList[i], weiboList[j])
+		})
+		sort.SliceStable(otherList, func(i, j int) bool {
+			return hotspotSortLess(otherList[i], otherList[j])
+		})
+
+		merged := make([]model.Hotspot, 0, len(allHotspots))
+		zi, wi := 0, 0
+
+		startWithZhihu := true
+		if len(zhihuList) > 0 && len(weiboList) > 0 {
+			startWithZhihu = hotspotSortLess(zhihuList[0], weiboList[0])
+		} else if len(zhihuList) == 0 && len(weiboList) > 0 {
+			startWithZhihu = false
+		}
+
+		pickZhihu := startWithZhihu
+		for zi < len(zhihuList) || wi < len(weiboList) {
+			if pickZhihu {
+				if zi < len(zhihuList) {
+					merged = append(merged, zhihuList[zi])
+					zi++
+				} else if wi < len(weiboList) {
+					merged = append(merged, weiboList[wi])
+					wi++
+				}
+			} else {
+				if wi < len(weiboList) {
+					merged = append(merged, weiboList[wi])
+					wi++
+				} else if zi < len(zhihuList) {
+					merged = append(merged, zhihuList[zi])
+					zi++
+				}
+			}
+			pickZhihu = !pickZhihu
+		}
+		allHotspots = append(merged, otherList...)
+	} else {
+		sort.SliceStable(allHotspots, func(i, j int) bool {
+			return hotspotSortLess(allHotspots[i], allHotspots[j])
+		})
+	}
+
+	total := int64(len(allHotspots))
+	hotspots := make([]model.Hotspot, 0, pageSize)
+	start := (page - 1) * pageSize
+	if start < len(allHotspots) {
+		end := start + pageSize
+		if end > len(allHotspots) {
+			end = len(allHotspots)
+		}
+		hotspots = allHotspots[start:end]
+	}
 
 	c.JSON(http.StatusOK, Response{
 		Code: 200,
@@ -332,4 +470,257 @@ func GetHotspotDetail(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, Response{Code: 200, Data: hotspot})
+}
+
+func GetHotspotByQuestionID(c *gin.Context) {
+	questionID, err := strconv.ParseUint(c.Param("questionId"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, Response{Code: 400, Message: "invalid question id"})
+		return
+	}
+
+	hotspot, findErr := findHotspotByQuestionID(uint(questionID))
+	if findErr != nil {
+		c.JSON(http.StatusInternalServerError, Response{Code: 500, Message: "query hotspot failed"})
+		return
+	}
+	if hotspot == nil {
+		c.JSON(http.StatusNotFound, Response{Code: 404, Message: "hotspot not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, Response{Code: 200, Data: hotspot})
+}
+
+func findHotspotByQuestionID(questionID uint) (*model.Hotspot, error) {
+	var hotspot model.Hotspot
+	if err := database.DB.Where("question_id = ?", questionID).
+		Order("updated_at DESC").
+		First(&hotspot).Error; err == nil {
+		return &hotspot, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	linked, relinkErr := relinkHotspotByQuestionTitle(questionID)
+	if relinkErr != nil {
+		return nil, relinkErr
+	}
+	if linked != nil {
+		return linked, nil
+	}
+
+	return findHotspotByQuestionTitle(questionID)
+}
+
+func loadHotspotMapForQuestions(questionIDs []uint) (map[uint]*model.Hotspot, error) {
+	result := make(map[uint]*model.Hotspot)
+	if len(questionIDs) == 0 {
+		return result, nil
+	}
+
+	var linkedHotspots []model.Hotspot
+	if err := database.DB.Where("question_id IN ?", questionIDs).
+		Order("updated_at DESC").
+		Find(&linkedHotspots).Error; err != nil {
+		return nil, err
+	}
+
+	for i := range linkedHotspots {
+		if linkedHotspots[i].QuestionID == nil {
+			continue
+		}
+		id := *linkedHotspots[i].QuestionID
+		if _, exists := result[id]; exists {
+			continue
+		}
+		hotspot := linkedHotspots[i]
+		result[id] = &hotspot
+	}
+
+	for _, questionID := range questionIDs {
+		if _, exists := result[questionID]; exists {
+			continue
+		}
+		hotspot, err := findHotspotByQuestionID(questionID)
+		if err != nil {
+			return nil, err
+		}
+		if hotspot != nil {
+			result[questionID] = hotspot
+		}
+	}
+
+	return result, nil
+}
+
+func relinkHotspotByQuestionTitle(questionID uint) (*model.Hotspot, error) {
+	var question model.Question
+	if err := database.DB.First(&question, questionID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	title := strings.TrimSpace(question.Title)
+	if title == "" {
+		return nil, nil
+	}
+
+	questionDate := question.CreatedAt.Format("2006-01-02")
+	var hotspot model.Hotspot
+	matched, err := findBestHotspotCandidate(title, questionDate)
+	if err != nil {
+		return nil, err
+	}
+	if matched == nil {
+		return nil, nil
+	}
+	hotspot = *matched
+
+	now := time.Now()
+	updates := map[string]any{
+		"question_id":  questionID,
+		"status":       model.HotspotStatusCompleted,
+		"processed_at": &now,
+	}
+	if err := database.DB.Model(&model.Hotspot{}).Where("id = ?", hotspot.ID).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+
+	hotspot.QuestionID = &questionID
+	hotspot.Status = model.HotspotStatusCompleted
+	hotspot.ProcessedAt = &now
+	return &hotspot, nil
+}
+
+func findHotspotByQuestionTitle(questionID uint) (*model.Hotspot, error) {
+	var question model.Question
+	if err := database.DB.First(&question, questionID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	title := strings.TrimSpace(question.Title)
+	if title == "" {
+		return nil, nil
+	}
+
+	return findBestHotspotDisplayCandidate(title, question.CreatedAt.Format("2006-01-02"))
+}
+
+func findBestHotspotCandidate(questionTitle, questionDate string) (*model.Hotspot, error) {
+	matchCandidates := func(date string) (*model.Hotspot, error) {
+		query := database.DB.
+			Where("question_id IS NULL")
+		if date != "" {
+			query = query.Where("hotspot_date = ?", date)
+		}
+
+		var candidates []model.Hotspot
+		if err := query.Order("crawled_at DESC").Find(&candidates).Error; err != nil {
+			return nil, err
+		}
+
+		for i := range candidates {
+			if titlesMatch(questionTitle, candidates[i].Title) {
+				return &candidates[i], nil
+			}
+		}
+		return nil, nil
+	}
+
+	matched, err := matchCandidates(questionDate)
+	if err != nil {
+		return nil, err
+	}
+	if matched != nil {
+		return matched, nil
+	}
+	return matchCandidates("")
+}
+
+func findBestHotspotDisplayCandidate(questionTitle, questionDate string) (*model.Hotspot, error) {
+	matchCandidates := func(date string) (*model.Hotspot, error) {
+		query := database.DB.Model(&model.Hotspot{})
+		if date != "" {
+			query = query.Where("hotspot_date = ?", date)
+		}
+
+		var candidates []model.Hotspot
+		if err := query.Order("crawled_at DESC").Find(&candidates).Error; err != nil {
+			return nil, err
+		}
+
+		for i := range candidates {
+			if titlesMatch(questionTitle, candidates[i].Title) {
+				return &candidates[i], nil
+			}
+		}
+		return nil, nil
+	}
+
+	matched, err := matchCandidates(questionDate)
+	if err != nil {
+		return nil, err
+	}
+	if matched != nil {
+		return matched, nil
+	}
+	return matchCandidates("")
+}
+
+func titlesMatch(questionTitle, hotspotTitle string) bool {
+	normalizedQuestion := normalizeComparableTitle(questionTitle)
+	normalizedHotspot := normalizeComparableTitle(hotspotTitle)
+	if normalizedQuestion == "" || normalizedHotspot == "" {
+		return false
+	}
+	return normalizedQuestion == normalizedHotspot ||
+		strings.Contains(normalizedQuestion, normalizedHotspot) ||
+		strings.Contains(normalizedHotspot, normalizedQuestion)
+}
+
+func normalizeComparableTitle(input string) string {
+	s := strings.TrimSpace(strings.ToLower(input))
+	replacer := strings.NewReplacer(
+		" ", "",
+		"　", "",
+		"，", "",
+		"。", "",
+		"；", "",
+		"：", "",
+		"？", "",
+		"！", "",
+		"（", "",
+		"）", "",
+		"【", "",
+		"】", "",
+		"《", "",
+		"》", "",
+		"“", "",
+		"”", "",
+		"‘", "",
+		"’", "",
+		"(", "",
+		")", "",
+		"[", "",
+		"]", "",
+		"{", "",
+		"}", "",
+		"-", "",
+		"—", "",
+		"_", "",
+		"·", "",
+		":", "",
+		";", "",
+		",", "",
+		".", "",
+		"!", "",
+		"?", "",
+	)
+	return replacer.Replace(s)
 }

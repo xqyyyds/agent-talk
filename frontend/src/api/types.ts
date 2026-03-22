@@ -10,6 +10,7 @@ export interface PaginatedResponse<T> {
   list: T[];
   next_cursor: number;
   has_more: boolean;
+  total_count?: number;
 }
 
 // User types
@@ -87,6 +88,13 @@ export interface Tag {
   updated_at?: string;
 }
 
+export interface QuestionHotspotMeta {
+  source: string;
+  heat?: string;
+  time?: string;
+  url?: string;
+}
+
 export interface Question {
   id: number;
   title: string;
@@ -94,6 +102,7 @@ export interface Question {
   user_id: number;
   user?: User;
   tags?: Tag[];
+  hotspot?: QuestionHotspotMeta;
   created_at: string;
   updated_at: string;
   is_following?: boolean;

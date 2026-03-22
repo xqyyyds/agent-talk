@@ -11,13 +11,14 @@ from app.clients.redis_client import redis_client
 from app.config import settings
 from app.core.agent_manager import agent_manager, ANSWER_PROBABILITY
 from app.core.memory import agent_memory
+from app.core.debate_topic_mix import get_track_label, select_topic_track
 from app.prompts.debate import (
     DEBATE_HOST_SUMMARY_PROMPT,
     DEBATE_OPENING_PROMPT,
     DEBATE_REBUTTAL_PROMPT,
     DEBATE_SUMMARY_PROMPT,
-    DEBATE_TOPIC_CANDIDATES_PROMPT,
-    DEBATE_TOPIC_SELECTOR_PROMPT,
+    build_topic_candidates_prompt,
+    build_topic_selector_prompt,
 )
 
 logger = logging.getLogger("agent_service")
@@ -129,7 +130,7 @@ class DebateOrchestrator:
         )
         return combined
 
-    async def _generate_topic(self, proposer) -> str:
+    async def _generate_topic(self, proposer) -> tuple[str, str]:
         recent_topics = [
             h.get("topic", "") for h in self.history[-50:] if h.get("topic")
         ]
@@ -138,8 +139,11 @@ class DebateOrchestrator:
                 :30
             ] + recent_topics[:20]
 
+        track = select_topic_track()
+        track_label = get_track_label(track)
         candidates_text = await llm_client.generate(
-            prompt=DEBATE_TOPIC_CANDIDATES_PROMPT.format(
+            prompt=build_topic_candidates_prompt(
+                track=track,
                 agent_name=proposer.username,
                 system_prompt=proposer.system_prompt or proposer.persona,
                 recent_topics="\n".join(f"- {x}" for x in recent_topics[:30]) or "- 无",
@@ -158,16 +162,17 @@ class DebateOrchestrator:
             lines.append(line)
 
         if not lines:
-            return "AI 五年内会取代大多数白领，继续读大学已经没有意义了吗？"
+            return "AI 五年内会取代大多数白领，继续读大学已经没有意义了吗？", track
 
         selected = await llm_client.generate(
-            prompt=DEBATE_TOPIC_SELECTOR_PROMPT.format(
-                candidates="\n".join(f"- {x}" for x in lines[:6])
+            prompt=build_topic_selector_prompt(
+                track_label=track_label,
+                candidates="\n".join(f"- {x}" for x in lines[:6]),
             ),
             system_prompt="你是最懂社区话题传播性的选题总监。",
             max_tokens=120,
         )
-        return selected.strip().strip('"') or lines[0]
+        return selected.strip().strip('"') or lines[0], track
 
     def _build_stance_map_text(self, stances: Dict[str, str]) -> str:
         """构建各方立场速览文本，明确标注每个Agent持什么立场"""
@@ -275,12 +280,13 @@ class DebateOrchestrator:
                 "errors": ["没有可用Agent"],
             }
 
-        topic = await self._generate_topic(proposer)
+        topic, topic_track = await self._generate_topic(proposer)
 
         if self._is_stopped():
             return {
                 "question_id": None,
                 "topic": topic,
+                "topic_track": topic_track,
                 "messages": 0,
                 "errors": ["已停止"],
             }
@@ -300,6 +306,7 @@ class DebateOrchestrator:
             return {
                 "question_id": question_id,
                 "topic": topic,
+                "topic_track": topic_track,
                 "messages": 0,
                 "errors": ["没有回答者"],
             }
@@ -364,6 +371,7 @@ class DebateOrchestrator:
             return {
                 "question_id": question_id,
                 "topic": topic,
+                "topic_track": topic_track,
                 "messages": len(raw_history),
                 "errors": errors,
                 "participants": [d.username for d in debaters],
@@ -414,11 +422,12 @@ class DebateOrchestrator:
             await agent_memory.add_topic(proposer.user_id, topic)
 
         return {
-            "question_id": question_id,
-            "topic": topic,
-            "messages": len(raw_history),
-            "errors": errors,
-            "participants": [d.username for d in debaters],
+                "question_id": question_id,
+                "topic": topic,
+                "topic_track": topic_track,
+                "messages": len(raw_history),
+                "errors": errors,
+                "participants": [d.username for d in debaters],
         }
 
     async def start_debate_session(self, cycle_count: int = 1, resume: bool = False):
@@ -471,6 +480,7 @@ class DebateOrchestrator:
                         "id": len(self.history) + 1,
                         "cycle": i + 1,
                         "topic": result.get("topic", ""),
+                        "topic_track": result.get("topic_track", ""),
                         "question_id": result.get("question_id"),
                         "messages": result.get("messages", 0),
                         "participants": result.get("participants", []),

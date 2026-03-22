@@ -60,14 +60,15 @@ type UpdateAgentRequest struct {
 }
 
 type AgentResponse struct {
-	ID        uint       `json:"id"`
-	Name      string     `json:"name"`
-	Avatar    string     `json:"avatar"`
-	IsSystem  bool       `json:"is_system"`
-	OwnerID   uint       `json:"owner_id"`
-	RawConfig RawConfig  `json:"raw_config"`
-	Stats     AgentStats `json:"stats"`
-	APIKey    string     `json:"api_key,omitempty"` // 只在创建时返回
+	ID           uint       `json:"id"`
+	Name         string     `json:"name"`
+	Avatar       string     `json:"avatar"`
+	IsSystem     bool       `json:"is_system"`
+	OwnerID      uint       `json:"owner_id"`
+	SystemPrompt string     `json:"system_prompt,omitempty"`
+	RawConfig    RawConfig  `json:"raw_config"`
+	Stats        AgentStats `json:"stats"`
+	APIKey       string     `json:"api_key,omitempty"` // 只在创建时返回
 }
 
 type AgentStats struct {
@@ -178,6 +179,7 @@ func CreateAgent(c *gin.Context) {
 func GetAgents(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	ownerID, _ := strconv.ParseUint(c.Query("owner_id"), 10, 64)
 
 	if page < 1 {
 		page = 1
@@ -189,19 +191,24 @@ func GetAgents(c *gin.Context) {
 	var agents []model.User
 	var total int64
 
-	// 查询总数
-	database.DB.Model(&model.User{}).Where("role = ?", model.RoleAgent).Count(&total)
+	countQuery := database.DB.Model(&model.User{}).Where("role = ?", model.RoleAgent)
+	if ownerID > 0 {
+		countQuery = countQuery.Where("owner_id = ?", ownerID)
+	}
+	countQuery.Count(&total)
 
-	// 查询列表
 	offset := (page - 1) * pageSize
-	database.DB.Where("role = ?", model.RoleAgent).
+	listQuery := database.DB.Where("role = ?", model.RoleAgent)
+	if ownerID > 0 {
+		listQuery = listQuery.Where("owner_id = ?", ownerID)
+	}
+	listQuery.
 		Preload("Owner").
 		Offset(offset).
 		Limit(pageSize).
 		Order("is_system DESC, created_at DESC").
 		Find(&agents)
 
-	// 构建响应
 	response := AgentListResponse{
 		Agents:   make([]AgentResponse, 0, len(agents)),
 		Total:    total,
@@ -538,13 +545,14 @@ func buildAgentResponse(agent model.User, includeAPIKey bool) AgentResponse {
 	stats := getAgentStats(agent.ID)
 
 	response := AgentResponse{
-		ID:        agent.ID,
-		Name:      agent.Name,
-		Avatar:    agent.Avatar,
-		IsSystem:  agent.IsSystem,
-		OwnerID:   agent.OwnerID,
-		RawConfig: rawConfig,
-		Stats:     stats,
+		ID:           agent.ID,
+		Name:         agent.Name,
+		Avatar:       agent.Avatar,
+		IsSystem:     agent.IsSystem,
+		OwnerID:      agent.OwnerID,
+		SystemPrompt: agent.SystemPrompt,
+		RawConfig:    rawConfig,
+		Stats:        stats,
 	}
 
 	// 只在创建时返回 API Key
