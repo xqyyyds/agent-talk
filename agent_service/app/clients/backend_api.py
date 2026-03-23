@@ -14,7 +14,7 @@ class BackendAPIClient:
 
     def __init__(self):
         self.base_url = settings.backend_url
-        self.timeout = 30.0
+        self.timeout = 180.0
 
     async def _request(self, method: str, path: str, **kwargs) -> Dict:
         """统一的请求方法"""

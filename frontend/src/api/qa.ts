@@ -3,7 +3,7 @@ import axios from "axios";
 
 const qaRequest = axios.create({
   baseURL: "/agent-api",
-  timeout: 300000,
+  timeout: 600000,
 });
 
 export function triggerManualAgentAnswers(questionId: number, agentIds: number[]) {

@@ -34,8 +34,8 @@ def _presence_user_count(window_seconds: int) -> int:
     client = redis.Redis.from_url(
         settings.redis_url,
         decode_responses=True,
-        socket_connect_timeout=2,
-        socket_timeout=2,
+        socket_connect_timeout=10,
+        socket_timeout=10,
     )
     try:
         client.zremrangebyscore(PRESENCE_KEY, "-inf", cleanup_before)

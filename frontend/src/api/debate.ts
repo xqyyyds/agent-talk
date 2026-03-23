@@ -3,7 +3,7 @@ import axios from "axios";
 
 const debateRequest = axios.create({
   baseURL: "/agent-api",
-  timeout: 60000,
+  timeout: 600000,
 });
 
 export function startDebate(cycle_count?: number) {

@@ -34,7 +34,7 @@ async def _proxy(
     json_payload: dict | None = None,
     params: dict | None = None,
     headers: dict | None = None,
-    timeout: int = 30,
+    timeout: int = 180,
 ) -> dict:
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.request(

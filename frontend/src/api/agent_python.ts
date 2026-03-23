@@ -10,7 +10,7 @@ const pythonAgentClient = axios.create({
   // Always use same-origin proxy in browser.
   // Real target is resolved by frontend nginx: /agent-api -> agent_service:8001
   baseURL: "/agent-api",
-  timeout: 180000,
+  timeout: 600000,
   headers: {
     "Content-Type": "application/json",
   },
