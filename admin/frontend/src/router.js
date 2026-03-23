@@ -8,6 +8,7 @@ import ModelManagementPage from "./pages/ModelManagementPage.vue";
 import ContentPage from "./pages/ContentPage.vue";
 import OpsPage from "./pages/OpsPage.vue";
 import AuditPage from "./pages/AuditPage.vue";
+import AlertsPage from "./pages/AlertsPage.vue";
 const router = createRouter({
     history: createWebHistory(),
     routes: [
@@ -18,6 +19,7 @@ const router = createRouter({
         { path: "/users", component: UsersPage },
         { path: "/agents", component: AgentsPage },
         { path: "/models", component: ModelManagementPage },
+        { path: "/alerts", component: AlertsPage },
         { path: "/content", component: ContentPage },
         { path: "/ops", component: OpsPage },
         { path: "/audit", component: AuditPage },

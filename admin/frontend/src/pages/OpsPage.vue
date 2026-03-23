@@ -1,5 +1,6 @@
 ﻿<script setup lang="ts">
 import { onMounted, onUnmounted, reactive, ref } from "vue";
+import { RouterLink } from "vue-router";
 import { api } from "../api";
 import { formatBeijingDateTime } from "../utils/datetime";
 
@@ -19,18 +20,6 @@ type CrawlerJob = {
   error_message: string;
 };
 
-type LlmAlert = {
-  id: string;
-  at: string;
-  scene: string;
-  primary_model: string;
-  secondary_model?: string;
-  primary_error: string;
-  fallback_succeeded: boolean;
-  secondary_error?: string;
-  acknowledged?: boolean;
-};
-
 const loading = ref(false);
 const output = ref("");
 
@@ -47,9 +36,6 @@ const configSaving = ref(false);
 const showOpenAIKey = ref(false);
 const showSecondaryOpenAIKey = ref(false);
 const showTavilyKey = ref(false);
-
-const llmAlertsLoading = ref(false);
-const llmAlerts = ref<LlmAlert[]>([]);
 
 const runtimeConfig = reactive({
   llm_failover_mode: "single",
@@ -296,27 +282,6 @@ async function saveRuntimeConfig() {
   }
 }
 
-async function loadLlmAlerts() {
-  llmAlertsLoading.value = true;
-  try {
-    const { data } = await api.getLlmAlerts(100);
-    llmAlerts.value = data?.data?.items || [];
-  } catch (err: any) {
-    output.value = `加载 LLM 告警失败:\n${normalizeError(err)}`;
-  } finally {
-    llmAlertsLoading.value = false;
-  }
-}
-
-async function ackLlmAlert(id: string) {
-  try {
-    await api.ackLlmAlerts([id]);
-    await loadLlmAlerts();
-  } catch (err: any) {
-    output.value = `确认告警失败:\n${normalizeError(err)}`;
-  }
-}
-
 async function loadPolicies() {
   try {
     const [qaRes, debateRes, schedulerRes, realtimeRes, capacityRes] = await Promise.all([
@@ -393,7 +358,6 @@ onMounted(async () => {
   await Promise.all([
     refreshDebateStatus(),
     loadRuntimeConfig(),
-    loadLlmAlerts(),
     loadCrawlerJobs(),
     loadPolicies(),
   ]);
@@ -627,44 +591,12 @@ onUnmounted(() => {
     </div>
 
     <div class="panel col-12">
-      <p class="section-title">LLM回退告警</p>
-      <div class="row" style="margin-bottom: 10px">
-        <button class="secondary" :disabled="llmAlertsLoading" @click="loadLlmAlerts">
-          {{ llmAlertsLoading ? "加载中..." : "刷新告警" }}
-        </button>
-      </div>
-      <div class="table-wrap">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>时间(北京时间)</th>
-              <th>场景</th>
-              <th>主模型</th>
-              <th>备模型</th>
-              <th>回退结果</th>
-              <th>错误摘要</th>
-              <th>确认</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="alert in llmAlerts" :key="alert.id">
-              <td>{{ formatDateTime(alert.at) }}</td>
-              <td>{{ alert.scene }}</td>
-              <td>{{ alert.primary_model }}</td>
-              <td>{{ alert.secondary_model || "-" }}</td>
-              <td>{{ alert.fallback_succeeded ? "成功" : "失败" }}</td>
-              <td class="mono">{{ alert.primary_error }}</td>
-              <td>
-                <button class="secondary" :disabled="!!alert.acknowledged" @click="ackLlmAlert(alert.id)">
-                  {{ alert.acknowledged ? "已确认" : "确认" }}
-                </button>
-              </td>
-            </tr>
-            <tr v-if="llmAlerts.length === 0">
-              <td colspan="7" style="text-align: center; opacity: 0.8">暂无告警</td>
-            </tr>
-          </tbody>
-        </table>
+      <p class="section-title">告警中心</p>
+      <div class="panel-soft" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+        <div>
+          模型回退、问题生成失败、回答生成失败都已迁移到独立的「告警中心」，运维页不再混放详细告警列表。
+        </div>
+        <RouterLink class="primary-link" to="/alerts">前往告警中心</RouterLink>
       </div>
     </div>
 

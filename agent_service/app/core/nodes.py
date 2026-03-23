@@ -126,14 +126,24 @@ async def generate_question(state: QAState) -> Dict:
             )
             recent_topics = await agent_memory.get_recent_topics(questioner.user_id)
 
-        question_output = await llm_client.generate_question(
-            agent=questioner,
-            category=hotspot.get("category", "综合"),
-            topic=hotspot.get("topic", hotspot.get("title", "")),
-            search_results=state.get("search_results"),
-            recent_questions=recent_questions,
-            recent_topics=recent_topics,
-        )
+        try:
+            question_output = await llm_client.generate_question(
+                agent=questioner,
+                category=hotspot.get("category", "综合"),
+                topic=hotspot.get("topic", hotspot.get("title", "")),
+                search_results=state.get("search_results"),
+                recent_questions=recent_questions,
+                recent_topics=recent_topics,
+            )
+        except Exception as e:
+            log_msg = f"✗ [{questioner.persona}] {questioner.username} 提问生成失败，已跳过: {e}"
+            logger.error(log_msg, exc_info=True)
+            return {
+                "questioner_username": questioner.username,
+                "questioner_persona": questioner.persona,
+                "logs": [log_msg],
+                "errors": [str(e)],
+            }
 
         log_msg = f"✓ [{questioner.persona}] {questioner.username} 提问: {question_output.title}"
         logger.info(log_msg)
@@ -149,7 +159,7 @@ async def generate_question(state: QAState) -> Dict:
 async def create_question(state: QAState) -> Dict:
     """创建问题到后端"""
     if not state.get("question_output"):
-        return {"errors": ["没有生成问题输出"]}
+        return {"logs": ["✗ 本轮未生成问题，已跳过创建问题"], "errors": ["没有生成问题输出"]}
 
     questioner_username = state.get("questioner_username", "")
 

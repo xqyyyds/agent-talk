@@ -19,7 +19,9 @@ from app.clients.backend_api import backend_client
 from app.config import settings
 from app.core.agent_manager import agent_manager
 from app.core.hotspots import hotspots_loader
+from app.core.llm_alerts import push_llm_alert
 from app.core.llm_runtime import run_with_llm_failover
+from app.core.runtime_config import get_runtime_config
 from app.core.tools import ALL_TOOLS, _sanitize_hotspot_text, create_answer as create_answer_tool
 from app.prompts.orchestrator import (
     HOTSPOT_TASK_TEMPLATE,
@@ -124,12 +126,44 @@ class LangGraphQAOrchestrator:
             react_agent = self._build_agent_with_llm(llm)
             return await react_agent.ainvoke({"messages": [("user", task_message)]})
 
-        return await run_with_llm_failover(
+        runtime_cfg = await get_runtime_config()
+        last_error: Exception | None = None
+        for attempt in range(1, 3):
+            try:
+                return await run_with_llm_failover(
+                    scene="orchestrator.react",
+                    runner=_invoke,
+                    max_tokens=10000,
+                    temperature_override=0.3,
+                )
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "orchestrator.react failed on attempt %s/2: %s",
+                    attempt,
+                    exc,
+                )
+                if attempt < 2:
+                    continue
+
+        await push_llm_alert(
+            kind="generation_failure",
             scene="orchestrator.react",
-            runner=_invoke,
-            max_tokens=10000,
-            temperature_override=0.3,
+            primary_model=str(runtime_cfg.llm_model or "").strip(),
+            secondary_model=(
+                str(runtime_cfg.llm_model_secondary or "").strip()
+                if str(runtime_cfg.llm_failover_mode).lower() == "dual_fallback"
+                else None
+            ),
+            primary_error=str(last_error or "unknown orchestration error"),
+            fallback_succeeded=False,
+            secondary_error=None,
+            agent_username="qa_orchestrator",
+            attempts=2,
+            effective_model=str(runtime_cfg.llm_model or "").strip(),
+            message="热点问答编排连续两次失败，本轮热点已跳过，不影响其他热点继续处理。",
         )
+        raise RuntimeError(f"orchestrator.react failed twice: {last_error}") from last_error
 
     async def _process_hotspot(self, hotspot: Dict, cycle: int, total: int) -> Dict:
         await agent_manager.refresh_agents()

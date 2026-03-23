@@ -1,4 +1,5 @@
 import { onMounted, onUnmounted, reactive, ref } from "vue";
+import { RouterLink } from "vue-router";
 import { api } from "../api";
 import { formatBeijingDateTime } from "../utils/datetime";
 const loading = ref(false);
@@ -14,8 +15,6 @@ const configSaving = ref(false);
 const showOpenAIKey = ref(false);
 const showSecondaryOpenAIKey = ref(false);
 const showTavilyKey = ref(false);
-const llmAlertsLoading = ref(false);
-const llmAlerts = ref([]);
 const runtimeConfig = reactive({
     llm_failover_mode: "single",
     openai_api_base: "",
@@ -241,28 +240,6 @@ async function saveRuntimeConfig() {
         configSaving.value = false;
     }
 }
-async function loadLlmAlerts() {
-    llmAlertsLoading.value = true;
-    try {
-        const { data } = await api.getLlmAlerts(100);
-        llmAlerts.value = data?.data?.items || [];
-    }
-    catch (err) {
-        output.value = `加载 LLM 告警失败:\n${normalizeError(err)}`;
-    }
-    finally {
-        llmAlertsLoading.value = false;
-    }
-}
-async function ackLlmAlert(id) {
-    try {
-        await api.ackLlmAlerts([id]);
-        await loadLlmAlerts();
-    }
-    catch (err) {
-        output.value = `确认告警失败:\n${normalizeError(err)}`;
-    }
-}
 async function loadPolicies() {
     try {
         const [qaRes, debateRes, schedulerRes, realtimeRes, capacityRes] = await Promise.all([
@@ -342,7 +319,6 @@ onMounted(async () => {
     await Promise.all([
         refreshDebateStatus(),
         loadRuntimeConfig(),
-        loadLlmAlerts(),
         loadCrawlerJobs(),
         loadPolicies(),
     ]);
@@ -962,76 +938,28 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
 });
 /** @type {__VLS_StyleScopedClasses['section-title']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-    ...{ class: "row" },
+    ...{ class: "panel-soft" },
     ...{ style: {} },
 });
-/** @type {__VLS_StyleScopedClasses['row']} */ ;
-__VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
-    ...{ onClick: (__VLS_ctx.loadLlmAlerts) },
-    ...{ class: "secondary" },
-    disabled: (__VLS_ctx.llmAlertsLoading),
-});
-/** @type {__VLS_StyleScopedClasses['secondary']} */ ;
-(__VLS_ctx.llmAlertsLoading ? "加载中..." : "刷新告警");
-__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-    ...{ class: "table-wrap" },
-});
-/** @type {__VLS_StyleScopedClasses['table-wrap']} */ ;
-__VLS_asFunctionalElement1(__VLS_intrinsics.table, __VLS_intrinsics.table)({
-    ...{ class: "table" },
-});
-/** @type {__VLS_StyleScopedClasses['table']} */ ;
-__VLS_asFunctionalElement1(__VLS_intrinsics.thead, __VLS_intrinsics.thead)({});
-__VLS_asFunctionalElement1(__VLS_intrinsics.tr, __VLS_intrinsics.tr)({});
-__VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
-__VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
-__VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
-__VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
-__VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
-__VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
-__VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
-__VLS_asFunctionalElement1(__VLS_intrinsics.tbody, __VLS_intrinsics.tbody)({});
-for (const [alert] of __VLS_vFor((__VLS_ctx.llmAlerts))) {
-    __VLS_asFunctionalElement1(__VLS_intrinsics.tr, __VLS_intrinsics.tr)({
-        key: (alert.id),
-    });
-    __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
-    (__VLS_ctx.formatDateTime(alert.at));
-    __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
-    (alert.scene);
-    __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
-    (alert.primary_model);
-    __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
-    (alert.secondary_model || "-");
-    __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
-    (alert.fallback_succeeded ? "成功" : "失败");
-    __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({
-        ...{ class: "mono" },
-    });
-    /** @type {__VLS_StyleScopedClasses['mono']} */ ;
-    (alert.primary_error);
-    __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
-    __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
-        ...{ onClick: (...[$event]) => {
-                __VLS_ctx.ackLlmAlert(alert.id);
-                // @ts-ignore
-                [loading, saveRuntimeConfig, configSaving, formatDateTime, showTavilyKey, loadRuntimeConfig, loadLlmAlerts, llmAlertsLoading, llmAlertsLoading, llmAlerts, ackLlmAlert,];
-            } },
-        ...{ class: "secondary" },
-        disabled: (!!alert.acknowledged),
-    });
-    /** @type {__VLS_StyleScopedClasses['secondary']} */ ;
-    (alert.acknowledged ? "已确认" : "确认");
-    // @ts-ignore
-    [];
-}
-if (__VLS_ctx.llmAlerts.length === 0) {
-    __VLS_asFunctionalElement1(__VLS_intrinsics.tr, __VLS_intrinsics.tr)({});
-    __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({
-        colspan: "7",
-        ...{ style: {} },
-    });
-}
+/** @type {__VLS_StyleScopedClasses['panel-soft']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
+let __VLS_0;
+/** @ts-ignore @type {typeof __VLS_components.RouterLink | typeof __VLS_components.RouterLink} */
+RouterLink;
+// @ts-ignore
+const __VLS_1 = __VLS_asFunctionalComponent1(__VLS_0, new __VLS_0({
+    ...{ class: "primary-link" },
+    to: "/alerts",
+}));
+const __VLS_2 = __VLS_1({
+    ...{ class: "primary-link" },
+    to: "/alerts",
+}, ...__VLS_functionalComponentArgsRest(__VLS_1));
+/** @type {__VLS_StyleScopedClasses['primary-link']} */ ;
+const { default: __VLS_5 } = __VLS_3.slots;
+// @ts-ignore
+[loading, saveRuntimeConfig, configSaving, showTavilyKey, loadRuntimeConfig,];
+var __VLS_3;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "panel col-12" },
 });
@@ -1063,6 +991,6 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.pre, __VLS_intrinsics.pre)({
 /** @type {__VLS_StyleScopedClasses['panel-soft']} */ ;
 (__VLS_ctx.output || "操作输出将显示在这里");
 // @ts-ignore
-[llmAlerts, capacitySnapshot, capacitySnapshot, output,];
+[capacitySnapshot, capacitySnapshot, output,];
 const __VLS_export = (await import('vue')).defineComponent({});
 export default {};

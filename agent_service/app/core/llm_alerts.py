@@ -19,22 +19,32 @@ def _utc_now_iso() -> str:
 
 async def push_llm_alert(
     *,
+    kind: str = "failover",
     scene: str,
     primary_model: str,
     secondary_model: str | None,
     primary_error: str,
     fallback_succeeded: bool,
     secondary_error: str | None = None,
+    agent_username: str | None = None,
+    attempts: int | None = None,
+    effective_model: str | None = None,
+    message: str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "id": str(uuid.uuid4()),
         "at": _utc_now_iso(),
+        "kind": kind,
         "scene": scene,
         "primary_model": primary_model,
         "secondary_model": secondary_model,
         "primary_error": primary_error[:2000],
         "fallback_succeeded": fallback_succeeded,
         "secondary_error": (secondary_error or "")[:2000],
+        "agent_username": (agent_username or "")[:255],
+        "attempts": int(attempts or 0),
+        "effective_model": (effective_model or "")[:255],
+        "message": (message or "")[:2000],
     }
 
     redis = Redis.from_url(settings.redis_url, decode_responses=True)
