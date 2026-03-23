@@ -81,8 +81,13 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#f5f7fa] px-4 py-8">
-    <div v-if="loading" class="flex items-center justify-center py-20 text-gray-600">加载中...</div>
+  <div class="min-h-screen px-4 py-8">
+    <div
+      v-if="loading"
+      class="flex items-center justify-center py-20 text-gray-600"
+    >
+      加载中...
+    </div>
 
     <div v-else-if="agent" class="mx-auto max-w-4xl">
       <button
@@ -94,7 +99,9 @@ onMounted(() => {
       </button>
 
       <div class="overflow-hidden rounded-2xl bg-white shadow-xl">
-        <div class="relative h-52 bg-gradient-to-br from-blue-500 to-indigo-600 p-8">
+        <div
+          class="relative h-52 bg-gradient-to-br from-blue-500 to-indigo-600 p-8"
+        >
           <span
             v-if="agent.is_system"
             class="absolute right-6 top-6 rounded-full bg-yellow-300 px-3 py-1 text-xs font-semibold text-yellow-900"
@@ -115,30 +122,42 @@ onMounted(() => {
             />
             <div class="pb-1 text-white">
               <h1 class="mb-2 text-3xl font-bold">{{ agent.name }}</h1>
-              <p class="text-blue-100">{{ agent.raw_config.headline || "暂无一句话介绍" }}</p>
+              <p class="text-blue-100">
+                {{ agent.raw_config.headline || "暂无一句话介绍" }}
+              </p>
             </div>
           </div>
         </div>
 
         <div class="space-y-8 p-8">
-          <div class="grid grid-cols-3 gap-6 border-b border-gray-200 pb-8 text-center">
+          <div
+            class="grid grid-cols-3 gap-6 border-b border-gray-200 pb-8 text-center"
+          >
             <div>
-              <div class="text-4xl font-bold text-gray-900">{{ agent.stats.questions_count }}</div>
+              <div class="text-4xl font-bold text-gray-900">
+                {{ agent.stats.questions_count }}
+              </div>
               <div class="mt-2 text-sm text-gray-500">提问数</div>
             </div>
             <div>
-              <div class="text-4xl font-bold text-gray-900">{{ agent.stats.answers_count }}</div>
+              <div class="text-4xl font-bold text-gray-900">
+                {{ agent.stats.answers_count }}
+              </div>
               <div class="mt-2 text-sm text-gray-500">回答数</div>
             </div>
             <div>
-              <div class="text-4xl font-bold text-gray-900">{{ agent.stats.followers_count }}</div>
+              <div class="text-4xl font-bold text-gray-900">
+                {{ agent.stats.followers_count }}
+              </div>
               <div class="mt-2 text-sm text-gray-500">粉丝数</div>
             </div>
           </div>
 
           <section>
             <h2 class="mb-3 text-lg font-semibold text-gray-900">详细描述</h2>
-            <p class="leading-relaxed text-gray-700">{{ agent.raw_config.bio || "暂无" }}</p>
+            <p class="leading-relaxed text-gray-700">
+              {{ agent.raw_config.bio || "暂无" }}
+            </p>
           </section>
 
           <section v-if="agent.system_prompt">
@@ -146,7 +165,8 @@ onMounted(() => {
               <div>
                 <h2 class="text-lg font-semibold text-gray-900">系统提示词</h2>
                 <p class="mt-1 text-sm text-gray-500">
-                  公开展示该 Agent 的系统提示词，方便了解它的行为设定与回答风格。
+                  公开展示该 Agent
+                  的系统提示词，方便了解它的行为设定与回答风格。
                 </p>
               </div>
               <div class="flex items-center gap-2">
@@ -171,7 +191,8 @@ onMounted(() => {
             >
               <pre
                 class="font-sans whitespace-pre-wrap break-words text-sm leading-7 text-gray-700"
-              >{{ agent.system_prompt }}</pre>
+                >{{ agent.system_prompt }}</pre
+              >
             </div>
           </section>
 
@@ -209,7 +230,9 @@ onMounted(() => {
             </div>
             <div>
               <h3 class="mb-2 font-semibold text-gray-900">活跃度</h3>
-              <div class="rounded-lg bg-green-50 px-4 py-2 text-green-700">{{ activityLabel }}</div>
+              <div class="rounded-lg bg-green-50 px-4 py-2 text-green-700">
+                {{ activityLabel }}
+              </div>
             </div>
             <div>
               <h3 class="mb-2 font-semibold text-gray-900">表达控制</h3>
@@ -223,9 +246,13 @@ onMounted(() => {
             v-if="agent.api_key"
             class="rounded-xl border border-yellow-200 bg-yellow-50 p-5"
           >
-            <div class="mb-2 text-sm font-semibold text-yellow-900">API Key（仅显示一次）</div>
+            <div class="mb-2 text-sm font-semibold text-yellow-900">
+              API Key（仅显示一次）
+            </div>
             <div class="flex items-center gap-2">
-              <code class="min-w-0 flex-1 overflow-x-auto rounded-lg bg-white px-3 py-2 text-sm text-yellow-800">
+              <code
+                class="min-w-0 flex-1 overflow-x-auto rounded-lg bg-white px-3 py-2 text-sm text-yellow-800"
+              >
                 {{ agent.api_key }}
               </code>
               <button

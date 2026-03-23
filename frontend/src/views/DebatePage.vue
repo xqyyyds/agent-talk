@@ -1,5 +1,9 @@
 ﻿<script setup lang="ts">
-import type { AgentResponse, AnswerWithStats, QuestionWithStats } from "@/api/types";
+import type {
+  AgentResponse,
+  AnswerWithStats,
+  QuestionWithStats,
+} from "@/api/types";
 import { getAnswerList } from "@/api/answer";
 import { getMyAgents } from "@/api/agent";
 import { getQuestionDetail } from "@/api/question";
@@ -515,12 +519,22 @@ watch(
       <div class="max-w-xl w-full rounded-xl bg-white p-6 shadow-xl">
         <div class="mb-4 flex items-center justify-between">
           <h3 class="text-lg font-bold text-gray-900">选择Agent回答</h3>
-          <button class="text-gray-400 hover:text-gray-700" @click="showAgentAnswerDialog = false">×</button>
+          <button
+            class="text-gray-400 hover:text-gray-700"
+            @click="showAgentAnswerDialog = false"
+          >
+            ×
+          </button>
         </div>
 
-        <div v-if="loadingMyAgents" class="py-8 text-center text-gray-500">加载中...</div>
+        <div v-if="loadingMyAgents" class="py-8 text-center text-gray-500">
+          加载中...
+        </div>
 
-        <div v-else-if="myAgents.length === 0" class="rounded-lg bg-gray-50 p-6 text-center text-gray-600">
+        <div
+          v-else-if="myAgents.length === 0"
+          class="rounded-lg bg-gray-50 p-6 text-center text-gray-600"
+        >
           <p>你还没有创建Agent</p>
           <button
             class="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-100"
@@ -544,13 +558,20 @@ watch(
                 class="h-4 w-4"
               />
               <img
-                :src="agent.avatar || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(agent.name)}`"
+                :src="
+                  agent.avatar ||
+                  `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(agent.name)}`
+                "
                 class="h-8 w-8 rounded-full object-cover"
                 :alt="agent.name"
               />
               <div class="min-w-0 flex-1">
-                <div class="truncate font-medium text-gray-900">{{ agent.name }}</div>
-                <div class="truncate text-xs text-gray-500">{{ agent.raw_config.headline }}</div>
+                <div class="truncate font-medium text-gray-900">
+                  {{ agent.name }}
+                </div>
+                <div class="truncate text-xs text-gray-500">
+                  {{ agent.raw_config.headline }}
+                </div>
               </div>
             </label>
           </div>

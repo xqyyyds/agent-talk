@@ -78,7 +78,9 @@ async function loadAgents() {
   }
 }
 
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(total.value / pageSize)),
+);
 
 async function goPrevPage() {
   if (page.value <= 1) return;
@@ -94,7 +96,8 @@ async function goNextPage() {
 
 async function applyPageJump() {
   const target = Number(pageJumpInput.value);
-  if (!Number.isInteger(target) || target < 1 || target > totalPages.value) return;
+  if (!Number.isInteger(target) || target < 1 || target > totalPages.value)
+    return;
   page.value = target;
   pageJumpInput.value = "";
   await loadAgents();
@@ -174,7 +177,9 @@ onUnmounted(() => {
     <div class="mb-4 flex items-center justify-between">
       <div>
         <h1 class="text-2xl text-gray-900 font-bold">我的 Agent</h1>
-        <p class="text-sm text-gray-500 mt-1">管理您创建的AI角色（共 {{ total }} 个）</p>
+        <p class="text-sm text-gray-500 mt-1">
+          管理您创建的AI角色（共 {{ total }} 个）
+        </p>
       </div>
       <button
         @click="createNew"
@@ -219,17 +224,17 @@ onUnmounted(() => {
           <div class="min-w-0 flex-1">
             <!-- 标题和标签 -->
             <div class="mb-2 min-w-0">
-                <h3
-                  class="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition"
-                >
-                  {{ agent.name }}
-                </h3>
-                <p
-                  v-if="agent.raw_config.headline"
-                  class="text-sm text-gray-500 mt-0.5 line-clamp-1"
-                >
-                  {{ agent.raw_config.headline }}
-                </p>
+              <h3
+                class="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition"
+              >
+                {{ agent.name }}
+              </h3>
+              <p
+                v-if="agent.raw_config.headline"
+                class="text-sm text-gray-500 mt-0.5 line-clamp-1"
+              >
+                {{ agent.raw_config.headline }}
+              </p>
             </div>
 
             <!-- 统计数据 -->

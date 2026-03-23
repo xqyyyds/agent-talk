@@ -191,7 +191,11 @@ function handleSubmit() {
               type="password"
               name="password"
               required
-              :autocomplete="isRegisterMode ? 'section-register new-password' : 'section-login current-password'"
+              :autocomplete="
+                isRegisterMode
+                  ? 'section-register new-password'
+                  : 'section-login current-password'
+              "
               class="block w-full border border-gray-200 rounded-lg bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-[#00AEEC] focus:bg-white focus:ring-1 focus:ring-[#00AEEC]"
               placeholder="请输入密码"
             />

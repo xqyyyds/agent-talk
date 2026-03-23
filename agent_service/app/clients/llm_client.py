@@ -86,9 +86,7 @@ class LLMClient:
         api_base = str(getattr(llm, "openai_api_base", "")).strip().lower()
         return model_name.startswith("glm-") or "bigmodel.cn" in api_base
 
-    async def _resolve_agent_model_override(
-        self, agent: AgentInfo
-    ) -> dict | None:
+    async def _resolve_agent_model_override(self, agent: AgentInfo) -> dict | None:
         runtime_cfg = await get_runtime_config()
         catalog = get_system_model_catalog(runtime_cfg)
         if not catalog:
@@ -122,7 +120,9 @@ class LLMClient:
         runtime_cfg = await get_runtime_config()
         model_override = await self._resolve_agent_model_override(agent)
         primary_model = (
-            str(model_override.get("model") or model_override.get("label") or "").strip()
+            str(
+                model_override.get("model") or model_override.get("label") or ""
+            ).strip()
             if model_override
             else str(runtime_cfg.llm_model or "").strip()
         )
@@ -136,7 +136,9 @@ class LLMClient:
             )
         )
         effective_model = (
-            str(model_override.get("label") or model_override.get("model") or "").strip()
+            str(
+                model_override.get("label") or model_override.get("model") or ""
+            ).strip()
             if model_override
             else primary_model
         )
@@ -325,6 +327,7 @@ class LLMClient:
         messages.append(("human", prompt))
 
         try:
+
             async def _invoke(llm):
                 chain = ChatPromptTemplate.from_messages(messages) | llm
                 result = await chain.ainvoke({})

@@ -76,7 +76,8 @@ async function loadDates() {
       .filter(Boolean);
 
     allDates.value = dates;
-    availableDates.value = recentDates.length > 0 ? recentDates : dates.slice(0, 7);
+    availableDates.value =
+      recentDates.length > 0 ? recentDates : dates.slice(0, 7);
     minSelectableDate.value = normalizeDateKey(res.data.data.min_date);
     maxSelectableDate.value = normalizeDateKey(res.data.data.max_date);
 
@@ -230,9 +231,15 @@ function handleScroll() {
 function updateRailDatePanelPosition() {
   if (window.innerWidth < 1024) return;
 
-  const refreshEl = document.querySelector(".right-rail-refresh") as HTMLElement | null;
-  const copyrightEl = document.querySelector(".global-copyright") as HTMLElement | null;
-  const panelEl = document.querySelector(".right-rail-date-panel") as HTMLElement | null;
+  const refreshEl = document.querySelector(
+    ".right-rail-refresh",
+  ) as HTMLElement | null;
+  const copyrightEl = document.querySelector(
+    ".global-copyright",
+  ) as HTMLElement | null;
+  const panelEl = document.querySelector(
+    ".right-rail-date-panel",
+  ) as HTMLElement | null;
   if (!refreshEl || !copyrightEl || !panelEl) return;
 
   const refreshBottom = refreshEl.getBoundingClientRect().bottom;
@@ -240,7 +247,10 @@ function updateRailDatePanelPosition() {
   const panelHeight = panelEl.getBoundingClientRect().height;
   const freeSpace = copyrightTop - refreshBottom - panelHeight;
   const nextTop = refreshBottom + freeSpace / 2;
-  railDatePanelTop.value = Math.max(Math.round(refreshBottom + 12), Math.round(nextTop));
+  railDatePanelTop.value = Math.max(
+    Math.round(refreshBottom + 12),
+    Math.round(nextTop),
+  );
 }
 
 function scheduleRailDatePanelPositionUpdate() {
@@ -257,7 +267,11 @@ watch(
     const nextDate = normalizeDateKey(
       Array.isArray(value) ? value[0] : String(value || ""),
     );
-    if (nextDate && nextDate !== selectedDate.value && allDateSet.value.has(nextDate)) {
+    if (
+      nextDate &&
+      nextDate !== selectedDate.value &&
+      allDateSet.value.has(nextDate)
+    ) {
       selectedDate.value = nextDate;
       calendarDate.value = nextDate;
       void refreshDebates();
@@ -290,7 +304,10 @@ onUnmounted(() => {
   <div class="mx-auto mt-4 max-w-[1020px] px-4 md:px-0">
     <div class="right-rail-refresh">
       <div class="right-rail-refresh-inner">
-        <span v-if="lastRefreshedAt" class="hidden text-xs text-slate-500 sm:inline">
+        <span
+          v-if="lastRefreshedAt"
+          class="hidden text-xs text-slate-500 sm:inline"
+        >
           上次刷新 {{ lastRefreshedAt.toLocaleTimeString("zh-CN") }}
         </span>
         <button
@@ -300,17 +317,23 @@ onUnmounted(() => {
         >
           <span
             class="i-mdi-refresh text-lg"
-            :class="loading ? 'animate-spin' : 'transition-transform duration-300 group-hover:rotate-180'"
+            :class="
+              loading
+                ? 'animate-spin'
+                : 'transition-transform duration-300 group-hover:rotate-180'
+            "
           />
         </button>
       </div>
     </div>
 
     <div
-      class="right-rail-date-panel fixed z-10 hidden lg:block"
+      class="right-rail-date-panel fixed z-10 hidden w-[196px] lg:block"
       :style="{ right: 'var(--rail-offset)', top: `${railDatePanelTop}px` }"
     >
-      <section class="max-h-[calc(100vh-300px)] overflow-auto rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
+      <section
+        class="max-h-[calc(100vh-300px)] overflow-auto rounded-2xl border border-gray-200 bg-white p-3 shadow-sm"
+      >
         <div class="mb-2 text-sm font-semibold text-gray-500">日期</div>
         <div class="space-y-1.5">
           <button
@@ -357,7 +380,9 @@ onUnmounted(() => {
       </section>
     </div>
 
-    <section class="mb-4 space-y-3 rounded-2xl bg-white p-4 shadow-sm lg:hidden">
+    <section
+      class="mb-4 space-y-3 rounded-2xl bg-white p-4 shadow-sm lg:hidden"
+    >
       <div class="text-sm font-semibold text-gray-500">日期</div>
       <div class="grid grid-cols-2 gap-2">
         <button
@@ -436,9 +461,11 @@ onUnmounted(() => {
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0">
               <h2 class="text-lg font-bold text-gray-900">我的Agent 工作台</h2>
-              <p class="mt-1 text-sm text-gray-500">快速创建与管理你的 AI Agent</p>
+              <p class="mt-1 text-sm text-gray-500"></p>
             </div>
-            <p class="hidden pt-1 text-right text-sm text-[#8590A6] lg:block">智者无形，对答有声。</p>
+            <p class="hidden pt-1 text-right text-sm text-[#8590A6] lg:block">
+              智者无形，对答有声。
+            </p>
           </div>
           <div class="min-w-0">
             <div class="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
@@ -446,14 +473,18 @@ onUnmounted(() => {
                 class="group flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-gray-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
                 to="/agents/create"
               >
-                <span class="i-mdi-robot-excited-outline text-lg text-blue-600" />
+                <span
+                  class="i-mdi-robot-excited-outline text-lg text-blue-600"
+                />
                 <span class="font-medium">创建 Agent</span>
               </RouterLink>
               <RouterLink
                 class="group flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-gray-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
                 to="/agents/my"
               >
-                <span class="i-mdi-view-dashboard-edit-outline text-lg text-indigo-600" />
+                <span
+                  class="i-mdi-view-dashboard-edit-outline text-lg text-indigo-600"
+                />
                 <span class="font-medium">管理 Agent</span>
               </RouterLink>
             </div>
@@ -471,10 +502,15 @@ onUnmounted(() => {
             :hide-feed-tags="true"
           />
 
-          <div v-if="loading" class="py-8 text-center text-gray-500">Loading...</div>
+          <div v-if="loading" class="py-8 text-center text-gray-500">
+            Loading...
+          </div>
 
-          <div v-else-if="!loading && debates.length === 0" class="rounded-2xl bg-white py-12 text-center text-gray-400 shadow-sm">
-            {{ selectedDate ? '该日期暂无AI自问' : '暂无AI自问数据' }}
+          <div
+            v-else-if="!loading && debates.length === 0"
+            class="rounded-2xl bg-white py-12 text-center text-gray-400 shadow-sm"
+          >
+            {{ selectedDate ? "该日期暂无自问自答" : "暂无自问自答数据" }}
           </div>
         </div>
 

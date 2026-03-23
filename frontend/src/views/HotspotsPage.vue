@@ -313,9 +313,15 @@ function applyCalendarDate() {
 function updateRailDatePanelPosition() {
   if (window.innerWidth < 1024 || isDetailMode.value) return;
 
-  const refreshEl = document.querySelector(".right-rail-refresh") as HTMLElement | null;
-  const copyrightEl = document.querySelector(".global-copyright") as HTMLElement | null;
-  const panelEl = document.querySelector(".right-rail-date-panel") as HTMLElement | null;
+  const refreshEl = document.querySelector(
+    ".right-rail-refresh",
+  ) as HTMLElement | null;
+  const copyrightEl = document.querySelector(
+    ".global-copyright",
+  ) as HTMLElement | null;
+  const panelEl = document.querySelector(
+    ".right-rail-date-panel",
+  ) as HTMLElement | null;
   if (!refreshEl || !copyrightEl || !panelEl) return;
 
   const refreshBottom = refreshEl.getBoundingClientRect().bottom;
@@ -323,7 +329,10 @@ function updateRailDatePanelPosition() {
   const panelHeight = panelEl.getBoundingClientRect().height;
   const freeSpace = copyrightTop - refreshBottom - panelHeight;
   const nextTop = refreshBottom + freeSpace / 2;
-  railDatePanelTop.value = Math.max(Math.round(refreshBottom + 12), Math.round(nextTop));
+  railDatePanelTop.value = Math.max(
+    Math.round(refreshBottom + 12),
+    Math.round(nextTop),
+  );
 }
 
 function scheduleRailDatePanelPositionUpdate() {
@@ -756,11 +765,20 @@ onUnmounted(() => {
 
       <div
         class="right-rail-date-panel fixed z-10 hidden lg:block"
-        :style="{ right: 'var(--rail-offset)', top: `${railDatePanelTop}px`, width: 'var(--rail-width)' }"
+        :style="{
+          right: 'var(--rail-offset)',
+          top: `${railDatePanelTop}px`,
+          width: 'var(--rail-width)',
+        }"
       >
-        <section class="max-h-[calc(100vh-300px)] overflow-auto rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
+        <section
+          class="max-h-[calc(100vh-300px)] overflow-auto rounded-2xl border border-gray-200 bg-white p-3 shadow-sm"
+        >
           <div class="mb-2 text-sm font-semibold text-gray-500">日期</div>
-          <div v-if="datesLoading" class="py-2 text-center text-xs text-gray-400">
+          <div
+            v-if="datesLoading"
+            class="py-2 text-center text-xs text-gray-400"
+          >
             加载中...
           </div>
           <div
@@ -805,9 +823,13 @@ onUnmounted(() => {
         </section>
       </div>
 
-      <section class="mb-4 space-y-3 rounded-2xl bg-white p-4 shadow-sm lg:hidden">
+      <section
+        class="mb-4 space-y-3 rounded-2xl bg-white p-4 shadow-sm lg:hidden"
+      >
         <div class="text-sm font-semibold text-gray-500">日期</div>
-        <div v-if="datesLoading" class="py-1 text-center text-xs text-gray-400">加载中...</div>
+        <div v-if="datesLoading" class="py-1 text-center text-xs text-gray-400">
+          加载中...
+        </div>
         <div
           v-else-if="availableDates.length === 0"
           class="py-1 text-center text-xs text-gray-400"
@@ -830,7 +852,10 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <div v-if="minSelectableDate && maxSelectableDate" class="grid grid-cols-[1fr_auto] items-center gap-2">
+        <div
+          v-if="minSelectableDate && maxSelectableDate"
+          class="grid grid-cols-[1fr_auto] items-center gap-2"
+        >
           <input
             v-model="calendarDate"
             type="date"
@@ -848,133 +873,133 @@ onUnmounted(() => {
       </section>
 
       <section class="min-w-0">
-          <div class="space-y-2">
-            <div
-              v-for="(hotspot, index) in hotspots"
-              :key="hotspot.id"
-              class="rounded-sm bg-white p-5 shadow-sm"
-            >
-              <div class="flex items-start gap-3">
-                <span
-                  v-if="showSourceRanking"
-                  class="mt-0.5 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-xs font-bold"
-                  :class="
-                    getDisplayRank(index) <= 3
-                      ? 'bg-red-500 text-white'
-                      : 'bg-gray-200 text-gray-600'
-                  "
+        <div class="space-y-2">
+          <div
+            v-for="(hotspot, index) in hotspots"
+            :key="hotspot.id"
+            class="rounded-sm bg-white p-5 shadow-sm"
+          >
+            <div class="flex items-start gap-3">
+              <span
+                v-if="showSourceRanking"
+                class="mt-0.5 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-xs font-bold"
+                :class="
+                  getDisplayRank(index) <= 3
+                    ? 'bg-red-500 text-white'
+                    : 'bg-gray-200 text-gray-600'
+                "
+              >
+                {{ getDisplayRank(index) }}
+              </span>
+
+              <div class="min-w-0 flex-1">
+                <h3
+                  class="text-lg font-bold leading-snug text-[#121212] hover:text-blue-600"
                 >
-                  {{ getDisplayRank(index) }}
-                </span>
+                  {{ hotspot.title }}
+                </h3>
 
-                <div class="min-w-0 flex-1">
-                  <h3
-                    class="text-lg font-bold leading-snug text-[#121212] hover:text-blue-600"
+                <div class="hotspot-meta-row mt-3 text-xs text-gray-400">
+                  <span
+                    class="meta-source font-medium"
+                    :class="
+                      hotspot.source === 'zhihu'
+                        ? 'text-blue-600'
+                        : 'text-orange-500'
+                    "
                   >
-                    {{ hotspot.title }}
-                  </h3>
-
-                  <div class="hotspot-meta-row mt-3 text-xs text-gray-400">
-                    <span
-                      class="meta-source font-medium"
-                      :class="
-                        hotspot.source === 'zhihu'
-                          ? 'text-blue-600'
-                          : 'text-orange-500'
-                      "
-                    >
-                      {{ hotspot.source === "zhihu" ? "知乎" : "微博" }}
-                    </span>
-                    <span class="meta-heat inline-flex items-center gap-1">
-                      <span class="i-mdi-fire text-orange-500" />
-                      {{ formatHeatToWan(hotspot.heat) || "--" }}
-                    </span>
-                    <span class="meta-time">{{ formatDate(hotspot.crawled_at) }}</span>
-                    <button
-                      v-if="hotspot.url"
-                      type="button"
-                      class="meta-link"
-                      @click.stop="openHotspotOriginalLink(hotspot)"
-                    >
-                      查看原文 ->
-                    </button>
-                    <span v-else class="meta-link-placeholder">--</span>
-                    <button
-                      v-if="hotspot.question_id"
-                      type="button"
-                      class="meta-link"
-                      @click.stop="goToQuestion(hotspot)"
-                    >
-                      查看问答 ->
-                    </button>
-                    <span v-else class="meta-link-placeholder">--</span>
-                    <button
-                      v-if="hotspot.source === 'zhihu'"
-                      type="button"
-                      class="meta-link"
-                      @click.stop="router.push(`/hotspots/${hotspot.id}`)"
-                    >
-                      查看agent与真人回答对比 ->
-                    </button>
-                    <span v-else class="meta-link-placeholder">--</span>
-                  </div>
+                    {{ hotspot.source === "zhihu" ? "知乎" : "微博" }}
+                  </span>
+                  <span class="meta-heat inline-flex items-center gap-1">
+                    <span class="i-mdi-fire text-orange-500" />
+                    {{ formatHeatToWan(hotspot.heat) || "--" }}
+                  </span>
+                  <span class="meta-time">{{
+                    formatDate(hotspot.crawled_at)
+                  }}</span>
+                  <button
+                    v-if="hotspot.url"
+                    type="button"
+                    class="meta-link"
+                    @click.stop="openHotspotOriginalLink(hotspot)"
+                  >
+                    查看原文 ->
+                  </button>
+                  <span v-else class="meta-link-placeholder">--</span>
+                  <button
+                    v-if="hotspot.question_id"
+                    type="button"
+                    class="meta-link"
+                    @click.stop="goToQuestion(hotspot)"
+                  >
+                    查看问答 ->
+                  </button>
+                  <span v-else class="meta-link-placeholder">--</span>
+                  <button
+                    v-if="hotspot.source === 'zhihu'"
+                    type="button"
+                    class="meta-link"
+                    @click.stop="router.push(`/hotspots/${hotspot.id}`)"
+                  >
+                    查看agent与真人回答对比 ->
+                  </button>
+                  <span v-else class="meta-link-placeholder">--</span>
                 </div>
               </div>
-            </div>
-
-            <div
-              v-if="loading"
-              class="rounded-sm bg-white py-8 text-center text-gray-500 shadow-sm"
-            >
-              加载中...
-            </div>
-
-            <div
-              v-else-if="hotspots.length === 0"
-              class="rounded-sm bg-white py-12 text-center text-gray-400 shadow-sm"
-            >
-              <div
-                class="i-mdi-fire mb-2 inline-block text-4xl text-gray-300"
-              />
-              <div>{{ selectedDate || "所选日期" }} 暂无热点数据</div>
             </div>
           </div>
 
           <div
-            v-if="total > pageSize"
-            class="mt-6 flex flex-wrap items-center justify-center gap-3 py-2 text-sm text-gray-500"
+            v-if="loading"
+            class="rounded-sm bg-white py-8 text-center text-gray-500 shadow-sm"
           >
-            <button
-              class="rounded border border-gray-200 bg-white px-3 py-1.5 transition hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="page <= 1"
-              @click="page--"
-            >
-              上一页
-            </button>
-            <span>{{ page }} / {{ Math.ceil(total / pageSize) }}</span>
-            <button
-              class="rounded border border-gray-200 bg-white px-3 py-1.5 transition hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="page >= Math.ceil(total / pageSize)"
-              @click="page++"
-            >
-              下一页
-            </button>
-            <input
-              v-model="pageJumpInput"
-              type="number"
-              min="1"
-              :max="Math.ceil(total / pageSize)"
-              class="w-20 rounded border border-gray-200 px-2 py-1.5 text-center text-sm outline-none focus:border-blue-300"
-              placeholder="页码"
-              @keyup.enter="applyPageJump"
-            />
-            <button
-              class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 transition hover:bg-blue-100"
-              @click="applyPageJump"
-            >
-              跳转
-            </button>
+            加载中...
           </div>
+
+          <div
+            v-else-if="hotspots.length === 0"
+            class="rounded-sm bg-white py-12 text-center text-gray-400 shadow-sm"
+          >
+            <div class="i-mdi-fire mb-2 inline-block text-4xl text-gray-300" />
+            <div>{{ selectedDate || "所选日期" }} 暂无热点数据</div>
+          </div>
+        </div>
+
+        <div
+          v-if="total > pageSize"
+          class="mt-6 flex flex-wrap items-center justify-center gap-3 py-2 text-sm text-gray-500"
+        >
+          <button
+            class="rounded border border-gray-200 bg-white px-3 py-1.5 transition hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="page <= 1"
+            @click="page--"
+          >
+            上一页
+          </button>
+          <span>{{ page }} / {{ Math.ceil(total / pageSize) }}</span>
+          <button
+            class="rounded border border-gray-200 bg-white px-3 py-1.5 transition hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="page >= Math.ceil(total / pageSize)"
+            @click="page++"
+          >
+            下一页
+          </button>
+          <input
+            v-model="pageJumpInput"
+            type="number"
+            min="1"
+            :max="Math.ceil(total / pageSize)"
+            class="w-20 rounded border border-gray-200 px-2 py-1.5 text-center text-sm outline-none focus:border-blue-300"
+            placeholder="页码"
+            @keyup.enter="applyPageJump"
+          />
+          <button
+            class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 transition hover:bg-blue-100"
+            @click="applyPageJump"
+          >
+            跳转
+          </button>
+        </div>
       </section>
     </template>
   </div>

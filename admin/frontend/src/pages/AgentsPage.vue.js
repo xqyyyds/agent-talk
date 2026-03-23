@@ -251,6 +251,7 @@ const testReply = ref("");
 const avatarFileInput = ref(null);
 const editMode = ref(false);
 const editingAgentId = ref(null);
+const initialEditPayload = ref(null);
 const listFilter = ref("all");
 const keyword = ref("");
 const filteredRows = computed(() => {
@@ -312,8 +313,8 @@ function handleAvatarUpload(event) {
         error.value = "请选择图片文件（JPG/PNG/GIF）";
         return;
     }
-    if (file.size > 8 * 1024 * 1024) {
-        error.value = "头像大小不能超过 8MB";
+    if (file.size > 15 * 1024 * 1024) {
+        error.value = "头像大小不能超过 15MB";
         return;
     }
     const reader = new FileReader();
@@ -357,8 +358,10 @@ function normalizeModelCatalogPayload(data) {
         is_default: Boolean(item.is_default),
     }));
     if (form.model_source === "system" &&
-        (!form.model_id || !modelOptions.value.some((item) => item.id === form.model_id))) {
-        const fallback = modelOptions.value.find((item) => item.is_default) || modelOptions.value[0];
+        (!form.model_id ||
+            !modelOptions.value.some((item) => item.id === form.model_id))) {
+        const fallback = modelOptions.value.find((item) => item.is_default) ||
+            modelOptions.value[0];
         form.model_id = fallback?.id || "";
     }
 }
@@ -388,7 +391,8 @@ function setModelSource(source) {
             model: "",
         };
         if (!form.model_id) {
-            const fallback = modelOptions.value.find((item) => item.is_default) || modelOptions.value[0];
+            const fallback = modelOptions.value.find((item) => item.is_default) ||
+                modelOptions.value[0];
             form.model_id = fallback?.id || "";
         }
     }
@@ -396,6 +400,7 @@ function setModelSource(source) {
 function resetToCreateMode() {
     editMode.value = false;
     editingAgentId.value = null;
+    initialEditPayload.value = null;
     mergeForm(defaultForm());
     optimizedPrompt.value = "";
     testReply.value = "";
@@ -455,7 +460,9 @@ function validateForm() {
         if (!editMode.value && !form.custom_model.api_key.trim()) {
             nextErrors.custom_model_api_key = "新建自定义模型时必须填写 API Key";
         }
-        if (editMode.value && !customModelKeyMasked.value && !form.custom_model.api_key.trim()) {
+        if (editMode.value &&
+            !customModelKeyMasked.value &&
+            !form.custom_model.api_key.trim()) {
             nextErrors.custom_model_api_key = "请填写 API Key";
         }
     }
@@ -556,20 +563,37 @@ function buildPayload() {
             : undefined,
     };
 }
-async function submitAgent() {
-    if (!validateForm()) {
-        return;
+function buildPatchPayload(basePayload, nextPayload) {
+    const patch = {};
+    for (const key of Object.keys(nextPayload)) {
+        const prev = basePayload[key];
+        const next = nextPayload[key];
+        if (JSON.stringify(prev) !== JSON.stringify(next)) {
+            patch[key] = next;
+        }
     }
+    return patch;
+}
+async function submitAgent() {
     saving.value = true;
     clearMessages();
     try {
         const payload = buildPayload();
         let successMessage = "Agent 创建成功";
         if (editMode.value && editingAgentId.value !== null) {
-            await api.updateAgent(editingAgentId.value, payload);
+            const base = initialEditPayload.value || {};
+            const patch = buildPatchPayload(base, payload);
+            if (Object.keys(patch).length === 0) {
+                success.value = "未检测到变更";
+                return;
+            }
+            await api.updateAgent(editingAgentId.value, patch);
             successMessage = `Agent #${editingAgentId.value} 更新成功`;
         }
         else {
+            if (!validateForm()) {
+                return;
+            }
             await api.createAgent(payload);
         }
         await loadAgents();
@@ -586,7 +610,9 @@ async function submitAgent() {
 function editRow(row) {
     const cfg = parseRawConfig(row.raw_config);
     const modelInfo = row.model_info || {};
-    const modelSource = row.model_source === "custom" || modelInfo.source === "custom" ? "custom" : "system";
+    const modelSource = row.model_source === "custom" || modelInfo.source === "custom"
+        ? "custom"
+        : "system";
     editMode.value = true;
     editingAgentId.value = row.id;
     mergeForm({
@@ -604,7 +630,10 @@ function editRow(row) {
         is_system: Boolean(row.is_system),
         avatar: row.avatar || "",
         model_source: modelSource,
-        model_id: String(row.model_id || modelInfo.configured_model_id || modelInfo.effective_model_id || ""),
+        model_id: String(row.model_id ||
+            modelInfo.configured_model_id ||
+            modelInfo.effective_model_id ||
+            ""),
         custom_model: {
             label: String(modelInfo.label || ""),
             base_url: String(modelInfo.base_url || ""),
@@ -612,6 +641,7 @@ function editRow(row) {
             model: String(modelInfo.model || ""),
         },
     });
+    initialEditPayload.value = buildPayload();
     customModelKeyMasked.value = String(modelInfo.api_key_masked || "");
     revealCustomApiKey.value = false;
     optimizedPrompt.value = "";
@@ -672,7 +702,9 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
     ...{ class: "section-title" },
 });
 /** @type {__VLS_StyleScopedClasses['section-title']} */ ;
-(__VLS_ctx.editMode ? `编辑 Agent #${__VLS_ctx.editingAgentId}` : "新建 Agent（与前台配置对齐）");
+(__VLS_ctx.editMode
+    ? `编辑 Agent #${__VLS_ctx.editingAgentId}`
+    : "新建 Agent（与前台配置对齐）");
 if (__VLS_ctx.error) {
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
         ...{ class: "panel-soft error-box" },
@@ -1108,7 +1140,8 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
 });
 /** @type {__VLS_StyleScopedClasses['avatar-preview']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.img)({
-    src: (__VLS_ctx.form.avatar || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(__VLS_ctx.form.name || 'default')}`),
+    src: (__VLS_ctx.form.avatar ||
+        `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(__VLS_ctx.form.name || 'default')}`),
     alt: (__VLS_ctx.form.name || 'Agent Avatar'),
 });
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({

@@ -71,7 +71,9 @@ function stripDebateIntroPrefix(
   return content.replace(/^圆桌辩论[:：]\s*[^\n]+\n?/u, "").trim();
 }
 
-const displayTitle = computed(() => normalizeTitle(displayQuestion.value?.title));
+const displayTitle = computed(() =>
+  normalizeTitle(displayQuestion.value?.title),
+);
 const displayContent = computed(() => {
   if (props.answer) return normalizeContent(props.answer.content);
   return stripDebateIntroPrefix(
@@ -83,9 +85,7 @@ const formattedExpandedContent = computed(() =>
   formatRichTextForDisplay(displayContent.value),
 );
 const collapsedPreviewText = computed(() =>
-  displayContent.value
-    .replace(/\n{2,}/g, "\n")
-    .trim(),
+  displayContent.value.replace(/\n{2,}/g, "\n").trim(),
 );
 const displayHotspot = computed(() => displayQuestion.value?.hotspot || null);
 
@@ -143,17 +143,27 @@ const shouldShowReadMore = computed(() => {
   return displayContent.value.length > maxPreviewChars;
 });
 const visibleContent = computed(() => {
-  if (isExpanded.value || !shouldShowReadMore.value) return collapsedPreviewText.value;
-  return `${displayContent.value.slice(0, maxPreviewChars).replace(/\n{2,}/g, "\n").trimEnd()}...`;
+  if (isExpanded.value || !shouldShowReadMore.value)
+    return collapsedPreviewText.value;
+  return `${displayContent.value
+    .slice(0, maxPreviewChars)
+    .replace(/\n{2,}/g, "\n")
+    .trimEnd()}...`;
 });
 
 const likeCount = ref(
-  props.answer ? props.answer.stats.like_count : props.question?.stats.like_count || 0,
+  props.answer
+    ? props.answer.stats.like_count
+    : props.question?.stats.like_count || 0,
 );
 const dislikeCount = ref(
-  props.answer ? props.answer.stats.dislike_count : props.question?.stats.dislike_count || 0,
+  props.answer
+    ? props.answer.stats.dislike_count
+    : props.question?.stats.dislike_count || 0,
 );
-const reactionStatus = ref<0 | 1 | 2>(props.answer?.reaction_status ?? props.question?.reaction_status ?? 0);
+const reactionStatus = ref<0 | 1 | 2>(
+  props.answer?.reaction_status ?? props.question?.reaction_status ?? 0,
+);
 
 const showCollectionDialog = ref(false);
 const collections = ref<Collection[]>([]);
@@ -212,8 +222,12 @@ async function handleReaction(action: ReactionAction) {
     return;
   }
 
-  const targetType = isAnswerMode.value ? TargetType.Answer : TargetType.Question;
-  const targetId = isAnswerMode.value ? props.answer!.id : displayQuestion.value!.id;
+  const targetType = isAnswerMode.value
+    ? TargetType.Answer
+    : TargetType.Question;
+  const targetId = isAnswerMode.value
+    ? props.answer!.id
+    : displayQuestion.value!.id;
 
   if (reactionStatus.value === 1) {
     likeCount.value--;
@@ -245,7 +259,8 @@ async function handleReaction(action: ReactionAction) {
     const initialDislike = props.answer
       ? props.answer.stats.dislike_count
       : props.question?.stats.dislike_count || 0;
-    const initialStatus = props.answer?.reaction_status ?? props.question?.reaction_status ?? 0;
+    const initialStatus =
+      props.answer?.reaction_status ?? props.question?.reaction_status ?? 0;
     reactionStatus.value = initialStatus;
     likeCount.value = initialLike;
     dislikeCount.value = initialDislike;
@@ -303,7 +318,9 @@ async function syncCollectionStatus() {
   try {
     const res = await getAnswerCollectionStatus(props.answer.id);
     if (res.data.code === 200 && res.data.data) {
-      collectedCollectionIds.value = new Set(res.data.data.collection_ids || []);
+      collectedCollectionIds.value = new Set(
+        res.data.data.collection_ids || [],
+      );
       collectionStatusLoaded.value = true;
     }
   } catch (error) {
@@ -416,7 +433,9 @@ onMounted(() => {
     </h2>
 
     <div
-      v-if="!hideFeedTags && displayQuestion.tags && displayQuestion.tags.length > 0"
+      v-if="
+        !hideFeedTags && displayQuestion.tags && displayQuestion.tags.length > 0
+      "
       class="mb-2 flex flex-wrap gap-2"
     >
       <span
@@ -463,8 +482,12 @@ onMounted(() => {
           v-html="formattedExpandedContent"
         />
         <template v-else>
-          <span v-if="answer?.user" class="font-bold">{{ answer.user.name }}: </span>
-          <span class="text-gray-800 whitespace-pre-line">{{ visibleContent }}</span>
+          <span v-if="answer?.user" class="font-bold"
+            >{{ answer.user.name }}:
+          </span>
+          <span class="text-gray-800 whitespace-pre-line">{{
+            visibleContent
+          }}</span>
         </template>
         <button
           v-if="shouldShowReadMore"
@@ -477,7 +500,10 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="mt-3 flex flex-row items-center whitespace-nowrap font-medium" @click.stop>
+    <div
+      class="mt-3 flex flex-row items-center whitespace-nowrap font-medium"
+      @click.stop
+    >
       <div class="flex items-center gap-2">
         <button
           class="flex cursor-pointer items-center gap-1 rounded border px-3 py-1.5 transition-colors"
@@ -516,8 +542,16 @@ onMounted(() => {
         :disabled="collectionActionLoading"
         @click="handleCollectionClick"
       >
-        <span :class="isAnswerCollected ? 'i-mdi-star text-lg' : 'i-mdi-star-outline text-lg'" />
-        <span class="text-sm font-medium">{{ isAnswerCollected ? "已收藏" : "收藏" }}</span>
+        <span
+          :class="
+            isAnswerCollected
+              ? 'i-mdi-star text-lg'
+              : 'i-mdi-star-outline text-lg'
+          "
+        />
+        <span class="text-sm font-medium">{{
+          isAnswerCollected ? "已收藏" : "收藏"
+        }}</span>
       </button>
     </div>
 
@@ -529,12 +563,24 @@ onMounted(() => {
       <div class="max-w-md w-full rounded bg-white p-6 shadow-lg">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="text-lg font-bold">收藏到收藏夹</h2>
-          <button class="text-gray-500 hover:text-gray-700" @click="showCollectionDialog = false">×</button>
+          <button
+            class="text-gray-500 hover:text-gray-700"
+            @click="showCollectionDialog = false"
+          >
+            ×
+          </button>
         </div>
 
         <div class="mb-4 max-h-60 overflow-y-auto">
-          <div v-if="collectionsLoading" class="py-8 text-center text-gray-500">加载中...</div>
-          <div v-else-if="collections.length === 0" class="py-4 text-center text-gray-400">还没有收藏夹</div>
+          <div v-if="collectionsLoading" class="py-8 text-center text-gray-500">
+            加载中...
+          </div>
+          <div
+            v-else-if="collections.length === 0"
+            class="py-4 text-center text-gray-400"
+          >
+            还没有收藏夹
+          </div>
           <div v-else class="space-y-2">
             <button
               v-for="collection in collections"
@@ -550,7 +596,10 @@ onMounted(() => {
             >
               <div class="flex items-center justify-between">
                 <span class="font-medium">{{ collection.name }}</span>
-                <span v-if="isCollected(collection.id)" class="i-mdi-check text-yellow-600" />
+                <span
+                  v-if="isCollected(collection.id)"
+                  class="i-mdi-check text-yellow-600"
+                />
               </div>
             </button>
           </div>

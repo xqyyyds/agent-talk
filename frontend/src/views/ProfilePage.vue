@@ -15,9 +15,19 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { deleteAgent, getAgents } from "../api/agent";
 import { getCollectionList } from "../api/collection";
-import { executeFollow, getUserFollowersList, getUserFollowingList } from "../api/follow";
+import {
+  executeFollow,
+  getUserFollowersList,
+  getUserFollowingList,
+} from "../api/follow";
 import { TargetType } from "../api/types";
-import { getUserAnswers, getUserProfile, getUserQuestions, getUserReactions, updateUserProfile } from "../api/user";
+import {
+  getUserAnswers,
+  getUserProfile,
+  getUserQuestions,
+  getUserReactions,
+  updateUserProfile,
+} from "../api/user";
 import AnswerItem from "../components/AnswerItem.vue";
 import AvatarImage from "../components/AvatarImage.vue";
 import PostItem from "../components/PostItem.vue";
@@ -30,8 +40,18 @@ import {
   getVisibleTopics,
 } from "../utils/agentMeta";
 
-type AgentTab = "questions" | "answers" | "followers" | "receivedLikes" | "receivedDislikes";
-type UserTab = "followingAgents" | "followedQuestions" | "collections" | "givenLikes" | "givenDislikes";
+type AgentTab =
+  | "questions"
+  | "answers"
+  | "followers"
+  | "receivedLikes"
+  | "receivedDislikes";
+type UserTab =
+  | "followingAgents"
+  | "followedQuestions"
+  | "collections"
+  | "givenLikes"
+  | "givenDislikes";
 type ProfileTab = AgentTab | UserTab;
 type ProfileMetric = {
   key: string;
@@ -101,25 +121,80 @@ const ownerAgentsPage = ref(1);
 const userId = computed(() => Number(route.params.userId || 0));
 const isOwnProfile = computed(() => userStore.user?.id === userId.value);
 const isAgentProfile = computed(() => profile.value?.role === "agent");
-const isUserProfile = computed(() => Boolean(profile.value) && profile.value?.role !== "agent");
+const isUserProfile = computed(
+  () => Boolean(profile.value) && profile.value?.role !== "agent",
+);
 const createdAgentCount = computed(
   () => profile.value?.stats.created_agent_count ?? ownerAgents.value.length,
 );
 
 const agentProfileMetrics = computed<ProfileMetric[]>(() => [
-  { key: "questions", label: "提问", value: profile.value?.stats.question_count || 0, tab: "questions" },
-  { key: "answers", label: "回答", value: profile.value?.stats.answer_count || 0, tab: "answers" },
-  { key: "followers", label: "粉丝", value: profile.value?.stats.follower_count || 0, tab: "followers" },
-  { key: "receivedLikes", label: "获赞", value: profile.value?.stats.received_like_count || 0, tab: "receivedLikes" },
-  { key: "receivedDislikes", label: "获踩", value: profile.value?.stats.received_dislike_count || 0, tab: "receivedDislikes" },
+  {
+    key: "questions",
+    label: "提问",
+    value: profile.value?.stats.question_count || 0,
+    tab: "questions",
+  },
+  {
+    key: "answers",
+    label: "回答",
+    value: profile.value?.stats.answer_count || 0,
+    tab: "answers",
+  },
+  {
+    key: "followers",
+    label: "粉丝",
+    value: profile.value?.stats.follower_count || 0,
+    tab: "followers",
+  },
+  {
+    key: "receivedLikes",
+    label: "获赞",
+    value: profile.value?.stats.received_like_count || 0,
+    tab: "receivedLikes",
+  },
+  {
+    key: "receivedDislikes",
+    label: "获踩",
+    value: profile.value?.stats.received_dislike_count || 0,
+    tab: "receivedDislikes",
+  },
 ]);
 
 const userProfileMetrics = computed<ProfileMetric[]>(() => [
-  { key: "followingAgents", label: "关注Agent", value: profile.value?.stats.following_count ?? followingAgents.value.length, tab: "followingAgents" },
-  { key: "followedQuestions", label: "关注问题", value: profile.value?.stats.followed_question_count ?? followedQuestions.value.length, tab: "followedQuestions" },
-  { key: "collections", label: "收藏夹", value: collections.value.length, tab: "collections" },
-  { key: "givenLikes", label: "点赞", value: profile.value?.stats.given_like_count ?? givenLikes.value.length, tab: "givenLikes" },
-  { key: "givenDislikes", label: "点踩", value: profile.value?.stats.given_dislike_count ?? givenDislikes.value.length, tab: "givenDislikes" },
+  {
+    key: "followingAgents",
+    label: "关注Agent",
+    value: profile.value?.stats.following_count ?? followingAgents.value.length,
+    tab: "followingAgents",
+  },
+  {
+    key: "followedQuestions",
+    label: "关注问题",
+    value:
+      profile.value?.stats.followed_question_count ??
+      followedQuestions.value.length,
+    tab: "followedQuestions",
+  },
+  {
+    key: "collections",
+    label: "收藏夹",
+    value: collections.value.length,
+    tab: "collections",
+  },
+  {
+    key: "givenLikes",
+    label: "点赞",
+    value: profile.value?.stats.given_like_count ?? givenLikes.value.length,
+    tab: "givenLikes",
+  },
+  {
+    key: "givenDislikes",
+    label: "点踩",
+    value:
+      profile.value?.stats.given_dislike_count ?? givenDislikes.value.length,
+    tab: "givenDislikes",
+  },
   { key: "createdAgents", label: "创建Agent", value: createdAgentCount.value },
 ]);
 
@@ -127,7 +202,9 @@ const followingAgentsCount = computed(
   () => profile.value?.stats.following_count ?? followingAgents.value.length,
 );
 const followedQuestionsCount = computed(
-  () => profile.value?.stats.followed_question_count ?? followedQuestions.value.length,
+  () =>
+    profile.value?.stats.followed_question_count ??
+    followedQuestions.value.length,
 );
 const givenLikesCount = computed(
   () => profile.value?.stats.given_like_count ?? givenLikes.value.length,
@@ -163,19 +240,31 @@ const ownerAgentsTotalPages = computed(() =>
   Math.max(1, Math.ceil(ownerAgentsTotal.value / PAGE_SIZE)),
 );
 const questionsTotalPages = computed(() =>
-  Math.max(1, Math.ceil((profile.value?.stats.question_count || 0) / PAGE_SIZE)),
+  Math.max(
+    1,
+    Math.ceil((profile.value?.stats.question_count || 0) / PAGE_SIZE),
+  ),
 );
 const answersTotalPages = computed(() =>
   Math.max(1, Math.ceil((profile.value?.stats.answer_count || 0) / PAGE_SIZE)),
 );
 const followersTotalPages = computed(() =>
-  Math.max(1, Math.ceil((profile.value?.stats.follower_count || 0) / PAGE_SIZE)),
+  Math.max(
+    1,
+    Math.ceil((profile.value?.stats.follower_count || 0) / PAGE_SIZE),
+  ),
 );
 const receivedLikesTotalPages = computed(() =>
-  Math.max(1, Math.ceil((profile.value?.stats.received_like_count || 0) / PAGE_SIZE)),
+  Math.max(
+    1,
+    Math.ceil((profile.value?.stats.received_like_count || 0) / PAGE_SIZE),
+  ),
 );
 const receivedDislikesTotalPages = computed(() =>
-  Math.max(1, Math.ceil((profile.value?.stats.received_dislike_count || 0) / PAGE_SIZE)),
+  Math.max(
+    1,
+    Math.ceil((profile.value?.stats.received_dislike_count || 0) / PAGE_SIZE),
+  ),
 );
 const followingAgentsTotalPages = computed(() =>
   Math.max(1, Math.ceil(followingAgentsCount.value / PAGE_SIZE)),
@@ -229,7 +318,9 @@ const givenDislikesPager = createCursorPager();
 function getTopMetricClass(metric: ProfileMetric) {
   if (!metric.tab) return "cursor-default text-gray-600";
   if (isAgentProfile.value) return "text-gray-600 hover:text-blue-600";
-  return activeTab.value === metric.tab ? "text-blue-600" : "text-gray-600 hover:text-blue-600";
+  return activeTab.value === metric.tab
+    ? "text-blue-600"
+    : "text-gray-600 hover:text-blue-600";
 }
 
 function getDefaultAvatarByRole(id: number, role?: string, name?: string) {
@@ -243,11 +334,20 @@ function getProfileAvatar() {
   if (!profile.value) return "";
   return (
     profile.value.avatar ||
-    getDefaultAvatarByRole(profile.value.id, profile.value.role, profile.value.name)
+    getDefaultAvatarByRole(
+      profile.value.id,
+      profile.value.role,
+      profile.value.name,
+    )
   );
 }
 
-function getUserAvatar(user: { id: number; role?: string; avatar?: string; name?: string }) {
+function getUserAvatar(user: {
+  id: number;
+  role?: string;
+  avatar?: string;
+  name?: string;
+}) {
   return user.avatar || getDefaultAvatarByRole(user.id, user.role, user.name);
 }
 
@@ -284,7 +384,8 @@ function getReactionTitle(item: UserReactionItem) {
 }
 
 function getReactionContent(item: UserReactionItem) {
-  if (item.target_type === TargetType.Question) return item.question?.content || "";
+  if (item.target_type === TargetType.Question)
+    return item.question?.content || "";
   return item.answer?.content || "";
 }
 
@@ -294,7 +395,9 @@ function goToReactionTarget(item: UserReactionItem) {
     return;
   }
   if (item.target_type === TargetType.Answer && item.answer) {
-    router.push(`/question/${item.answer.question_id}/answer/${item.answer.id}`);
+    router.push(
+      `/question/${item.answer.question_id}/answer/${item.answer.id}`,
+    );
   }
 }
 
@@ -384,7 +487,8 @@ async function loadFollowingAgents() {
     if (res.data.code === 200 && res.data.data) {
       const list = (res.data.data.list || []) as FollowWithUser[];
       followingAgents.value = list.filter((x) => x.user?.role === "agent");
-      followingAgentsPager.nextCursor.value = res.data.data.next_cursor || undefined;
+      followingAgentsPager.nextCursor.value =
+        res.data.data.next_cursor || undefined;
       followingAgentsPager.hasMore.value = res.data.data.has_more;
     }
   } finally {
@@ -403,8 +507,10 @@ async function loadFollowedQuestions() {
       PAGE_SIZE,
     );
     if (res.data.code === 200 && res.data.data) {
-      followedQuestions.value = (res.data.data.list || []) as FollowWithQuestion[];
-      followedQuestionsPager.nextCursor.value = res.data.data.next_cursor || undefined;
+      followedQuestions.value = (res.data.data.list ||
+        []) as FollowWithQuestion[];
+      followedQuestionsPager.nextCursor.value =
+        res.data.data.next_cursor || undefined;
       followedQuestionsPager.hasMore.value = res.data.data.has_more;
     }
   } finally {
@@ -460,7 +566,8 @@ async function loadReactionList(mode: "given" | "received", value: 1 | -1) {
     }
   } finally {
     if (mode === "received" && value === 1) receivedLikesLoading.value = false;
-    if (mode === "received" && value === -1) receivedDislikesLoading.value = false;
+    if (mode === "received" && value === -1)
+      receivedDislikesLoading.value = false;
     if (mode === "given" && value === 1) givenLikesLoading.value = false;
     if (mode === "given" && value === -1) givenDislikesLoading.value = false;
   }
@@ -542,9 +649,9 @@ function handleAvatarFileChange(event: Event) {
     return;
   }
 
-  const maxSize = 8 * 1024 * 1024;
+  const maxSize = 15 * 1024 * 1024;
   if (file.size > maxSize) {
-    alert("头像大小不能超过 8MB");
+    alert("头像大小不能超过 15MB");
     input.value = "";
     return;
   }
@@ -579,7 +686,12 @@ async function saveProfile() {
 
   savingProfile.value = true;
   try {
-    const payload: { handle?: string; name?: string; avatar?: string; password?: string } = {
+    const payload: {
+      handle?: string;
+      name?: string;
+      avatar?: string;
+      password?: string;
+    } = {
       name,
       avatar: profileForm.value.avatar || profile.value.avatar || "",
     };
@@ -618,16 +730,25 @@ async function saveProfile() {
 }
 
 async function ensureData(tab: ProfileTab) {
-  if (tab === "questions" && questions.value.length === 0) return loadQuestions();
+  if (tab === "questions" && questions.value.length === 0)
+    return loadQuestions();
   if (tab === "answers" && answers.value.length === 0) return loadAnswers();
-  if (tab === "followers" && followers.value.length === 0) return loadFollowers();
-  if (tab === "receivedLikes" && receivedLikes.value.length === 0) return loadReactionList("received", 1);
-  if (tab === "receivedDislikes" && receivedDislikes.value.length === 0) return loadReactionList("received", -1);
-  if (tab === "followingAgents" && followingAgents.value.length === 0) return loadFollowingAgents();
-  if (tab === "followedQuestions" && followedQuestions.value.length === 0) return loadFollowedQuestions();
-  if (tab === "collections" && collections.value.length === 0) return loadCollections();
-  if (tab === "givenLikes" && givenLikes.value.length === 0) return loadReactionList("given", 1);
-  if (tab === "givenDislikes" && givenDislikes.value.length === 0) return loadReactionList("given", -1);
+  if (tab === "followers" && followers.value.length === 0)
+    return loadFollowers();
+  if (tab === "receivedLikes" && receivedLikes.value.length === 0)
+    return loadReactionList("received", 1);
+  if (tab === "receivedDislikes" && receivedDislikes.value.length === 0)
+    return loadReactionList("received", -1);
+  if (tab === "followingAgents" && followingAgents.value.length === 0)
+    return loadFollowingAgents();
+  if (tab === "followedQuestions" && followedQuestions.value.length === 0)
+    return loadFollowedQuestions();
+  if (tab === "collections" && collections.value.length === 0)
+    return loadCollections();
+  if (tab === "givenLikes" && givenLikes.value.length === 0)
+    return loadReactionList("given", 1);
+  if (tab === "givenDislikes" && givenDislikes.value.length === 0)
+    return loadReactionList("given", -1);
   return Promise.resolve();
 }
 
@@ -672,7 +793,11 @@ async function initPage() {
     await loadQuestions();
   } else {
     activeTab.value = "followingAgents";
-    await Promise.all([loadFollowingAgents(), loadFollowedQuestions(), loadOwnerAgents()]);
+    await Promise.all([
+      loadFollowingAgents(),
+      loadFollowedQuestions(),
+      loadOwnerAgents(),
+    ]);
     if (isOwnProfile.value) await loadCollections();
   }
   lastRefreshedAt.value = new Date();
@@ -720,7 +845,12 @@ async function jumpCursorPagerToPage(
   targetPage: number,
   totalPages: number,
 ) {
-  if (!Number.isInteger(targetPage) || targetPage < 1 || targetPage > totalPages) return;
+  if (
+    !Number.isInteger(targetPage) ||
+    targetPage < 1 ||
+    targetPage > totalPages
+  )
+    return;
   if (targetPage === pager.currentPage.value) return;
 
   if (targetPage < pager.currentPage.value) {
@@ -759,7 +889,8 @@ function goCollectionsPrev() {
 }
 
 function goCollectionsNext() {
-  if (collectionsPage.value < collectionTotalPages.value) collectionsPage.value += 1;
+  if (collectionsPage.value < collectionTotalPages.value)
+    collectionsPage.value += 1;
 }
 
 async function goOwnerAgentsPrev() {
@@ -776,26 +907,42 @@ async function goOwnerAgentsNext() {
 
 function applyCollectionsJump() {
   const target = Number(pagerJumpInputs.value.collections || "");
-  if (!Number.isInteger(target) || target < 1 || target > collectionTotalPages.value) return;
+  if (
+    !Number.isInteger(target) ||
+    target < 1 ||
+    target > collectionTotalPages.value
+  )
+    return;
   collectionsPage.value = target;
   pagerJumpInputs.value.collections = "";
 }
 
 async function applyOwnerAgentsJump() {
   const target = Number(pagerJumpInputs.value.ownerAgents || "");
-  if (!Number.isInteger(target) || target < 1 || target > ownerAgentsTotalPages.value) return;
+  if (
+    !Number.isInteger(target) ||
+    target < 1 ||
+    target > ownerAgentsTotalPages.value
+  )
+    return;
   ownerAgentsPage.value = target;
   pagerJumpInputs.value.ownerAgents = "";
   await loadOwnerAgents();
 }
 
 onMounted(() => {
-  window.addEventListener("agenttalk:collection-changed", handleCollectionChanged);
+  window.addEventListener(
+    "agenttalk:collection-changed",
+    handleCollectionChanged,
+  );
   void initPage();
 });
 
 onUnmounted(() => {
-  window.removeEventListener("agenttalk:collection-changed", handleCollectionChanged);
+  window.removeEventListener(
+    "agenttalk:collection-changed",
+    handleCollectionChanged,
+  );
 });
 
 watch(
@@ -869,7 +1016,10 @@ watch(
                 </span>
               </div>
 
-              <div v-if="isAgentProfile" class="flex flex-wrap items-center gap-2">
+              <div
+                v-if="isAgentProfile"
+                class="flex flex-wrap items-center gap-2"
+              >
                 <button
                   v-if="profile.owner_id"
                   type="button"
@@ -906,7 +1056,9 @@ watch(
               </div>
             </div>
 
-            <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-gray-600">
+            <div
+              class="flex flex-wrap items-center gap-x-6 gap-y-2 text-gray-600"
+            >
               <button
                 v-for="metric in visibleMetrics"
                 :key="metric.key"
@@ -915,14 +1067,18 @@ watch(
                 :class="getTopMetricClass(metric)"
                 @click="metric.tab && changeTab(metric.tab)"
               >
-                <span class="text-xl text-[#1a1a1a] font-bold">{{ metric.value }}</span>
+                <span class="text-xl text-[#1a1a1a] font-bold">{{
+                  metric.value
+                }}</span>
                 <span class="text-base">{{ metric.label }}</span>
               </button>
             </div>
           </div>
 
           <div
-            v-if="isAgentProfile || (isOwnProfile && isUserProfile) || !isOwnProfile"
+            v-if="
+              isAgentProfile || (isOwnProfile && isUserProfile) || !isOwnProfile
+            "
             class="flex shrink-0 gap-2"
             :class="isAgentProfile ? 'self-start lg:flex-col' : 'self-start'"
           >
@@ -963,79 +1119,416 @@ watch(
 
       <template v-if="isAgentProfile">
         <div v-if="activeTab === 'questions'" class="space-y-2">
-          <PostItem v-for="question in questions" :key="question.id" :question="question" />
-          <div v-if="questionsLoading" class="py-8 text-center text-gray-500">加载中...</div>
-          <div v-else-if="questions.length === 0" class="rounded bg-white py-12 text-center text-gray-400 shadow-sm">还没有提问</div>
-          <div v-else class="flex items-center justify-center gap-3 py-3 text-sm text-gray-500">
-            <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="pagerPage(questionsPager) <= 1 || questionsLoading" @click="goCursorPagerPrev(questionsPager, loadQuestions)">上一页</button>
-            <span>{{ pagerPage(questionsPager) }} / {{ questionsTotalPages }}</span>
-            <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="!questionsPager.hasMore.value || questionsLoading" @click="goCursorPagerNext(questionsPager, loadQuestions)">下一页</button>
-            <input v-model="pagerJumpInputs.questions" type="number" min="1" :max="questionsTotalPages" class="w-20 rounded border border-gray-200 px-2 py-1 text-center" placeholder="页码" @keyup.enter="applyCursorPagerJump('questions', questionsPager, loadQuestions, questionsTotalPages)" />
-            <button class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100" @click="applyCursorPagerJump('questions', questionsPager, loadQuestions, questionsTotalPages)">跳转</button>
+          <PostItem
+            v-for="question in questions"
+            :key="question.id"
+            :question="question"
+          />
+          <div v-if="questionsLoading" class="py-8 text-center text-gray-500">
+            加载中...
+          </div>
+          <div
+            v-else-if="questions.length === 0"
+            class="rounded bg-white py-12 text-center text-gray-400 shadow-sm"
+          >
+            还没有提问
+          </div>
+          <div
+            v-else
+            class="flex items-center justify-center gap-3 py-3 text-sm text-gray-500"
+          >
+            <button
+              class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="pagerPage(questionsPager) <= 1 || questionsLoading"
+              @click="goCursorPagerPrev(questionsPager, loadQuestions)"
+            >
+              上一页
+            </button>
+            <span
+              >{{ pagerPage(questionsPager) }} / {{ questionsTotalPages }}</span
+            >
+            <button
+              class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="!questionsPager.hasMore.value || questionsLoading"
+              @click="goCursorPagerNext(questionsPager, loadQuestions)"
+            >
+              下一页
+            </button>
+            <input
+              v-model="pagerJumpInputs.questions"
+              type="number"
+              min="1"
+              :max="questionsTotalPages"
+              class="w-20 rounded border border-gray-200 px-2 py-1 text-center"
+              placeholder="页码"
+              @keyup.enter="
+                applyCursorPagerJump(
+                  'questions',
+                  questionsPager,
+                  loadQuestions,
+                  questionsTotalPages,
+                )
+              "
+            />
+            <button
+              class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100"
+              @click="
+                applyCursorPagerJump(
+                  'questions',
+                  questionsPager,
+                  loadQuestions,
+                  questionsTotalPages,
+                )
+              "
+            >
+              跳转
+            </button>
           </div>
         </div>
 
-        <div v-else-if="activeTab === 'answers'" class="overflow-hidden rounded bg-white shadow-sm">
-          <AnswerItem v-for="answer in answers" :key="answer.id" :answer="answer" :hide-author-follow-button="true" />
-          <div v-if="answersLoading" class="py-8 text-center text-gray-500">加载中...</div>
-          <div v-else-if="answers.length === 0" class="py-12 text-center text-gray-400">还没有回答</div>
-          <div v-else class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500">
-            <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="pagerPage(answersPager) <= 1 || answersLoading" @click="goCursorPagerPrev(answersPager, loadAnswers)">上一页</button>
+        <div
+          v-else-if="activeTab === 'answers'"
+          class="overflow-hidden rounded bg-white shadow-sm"
+        >
+          <AnswerItem
+            v-for="answer in answers"
+            :key="answer.id"
+            :answer="answer"
+            :hide-author-follow-button="true"
+          />
+          <div v-if="answersLoading" class="py-8 text-center text-gray-500">
+            加载中...
+          </div>
+          <div
+            v-else-if="answers.length === 0"
+            class="py-12 text-center text-gray-400"
+          >
+            还没有回答
+          </div>
+          <div
+            v-else
+            class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500"
+          >
+            <button
+              class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="pagerPage(answersPager) <= 1 || answersLoading"
+              @click="goCursorPagerPrev(answersPager, loadAnswers)"
+            >
+              上一页
+            </button>
             <span>{{ pagerPage(answersPager) }} / {{ answersTotalPages }}</span>
-            <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="!answersPager.hasMore.value || answersLoading" @click="goCursorPagerNext(answersPager, loadAnswers)">下一页</button>
-            <input v-model="pagerJumpInputs.answers" type="number" min="1" :max="answersTotalPages" class="w-20 rounded border border-gray-200 px-2 py-1 text-center" placeholder="页码" @keyup.enter="applyCursorPagerJump('answers', answersPager, loadAnswers, answersTotalPages)" />
-            <button class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100" @click="applyCursorPagerJump('answers', answersPager, loadAnswers, answersTotalPages)">跳转</button>
+            <button
+              class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="!answersPager.hasMore.value || answersLoading"
+              @click="goCursorPagerNext(answersPager, loadAnswers)"
+            >
+              下一页
+            </button>
+            <input
+              v-model="pagerJumpInputs.answers"
+              type="number"
+              min="1"
+              :max="answersTotalPages"
+              class="w-20 rounded border border-gray-200 px-2 py-1 text-center"
+              placeholder="页码"
+              @keyup.enter="
+                applyCursorPagerJump(
+                  'answers',
+                  answersPager,
+                  loadAnswers,
+                  answersTotalPages,
+                )
+              "
+            />
+            <button
+              class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100"
+              @click="
+                applyCursorPagerJump(
+                  'answers',
+                  answersPager,
+                  loadAnswers,
+                  answersTotalPages,
+                )
+              "
+            >
+              跳转
+            </button>
           </div>
         </div>
 
-        <div v-else-if="activeTab === 'followers'" class="rounded bg-white shadow-sm">
-          <div v-if="followersLoading" class="py-8 text-center text-gray-500">加载中...</div>
-          <div v-else-if="followers.length === 0" class="py-12 text-center text-gray-400">还没有粉丝</div>
-          <router-link v-for="item in followers" :key="item.follower.id" :to="`/profile/${item.follower.id}`" class="group flex items-center gap-3 border-b border-gray-100 px-5 py-4 last:border-0 hover:bg-gray-50">
-            <AvatarImage :src="getUserAvatar(item.follower)" :alt="item.follower.name" img-class="h-11 w-11 rounded-full bg-gray-200 object-cover" />
+        <div
+          v-else-if="activeTab === 'followers'"
+          class="rounded bg-white shadow-sm"
+        >
+          <div v-if="followersLoading" class="py-8 text-center text-gray-500">
+            加载中...
+          </div>
+          <div
+            v-else-if="followers.length === 0"
+            class="py-12 text-center text-gray-400"
+          >
+            还没有粉丝
+          </div>
+          <router-link
+            v-for="item in followers"
+            :key="item.follower.id"
+            :to="`/profile/${item.follower.id}`"
+            class="group flex items-center gap-3 border-b border-gray-100 px-5 py-4 last:border-0 hover:bg-gray-50"
+          >
+            <AvatarImage
+              :src="getUserAvatar(item.follower)"
+              :alt="item.follower.name"
+              img-class="h-11 w-11 rounded-full bg-gray-200 object-cover"
+            />
             <div class="min-w-0 flex-1">
-              <div class="truncate text-gray-900 font-medium">{{ item.follower.name }}</div>
-              <div v-if="item.follower.handle" class="text-sm text-gray-500">@{{ item.follower.handle }}</div>
+              <div class="truncate text-gray-900 font-medium">
+                {{ item.follower.name }}
+              </div>
+              <div v-if="item.follower.handle" class="text-sm text-gray-500">
+                @{{ item.follower.handle }}
+              </div>
             </div>
           </router-link>
-          <div v-if="followers.length > 0" class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500">
-            <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="pagerPage(followersPager) <= 1 || followersLoading" @click="goCursorPagerPrev(followersPager, loadFollowers)">上一页</button>
-            <span>{{ pagerPage(followersPager) }} / {{ followersTotalPages }}</span>
-            <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="!followersPager.hasMore.value || followersLoading" @click="goCursorPagerNext(followersPager, loadFollowers)">下一页</button>
-            <input v-model="pagerJumpInputs.followers" type="number" min="1" :max="followersTotalPages" class="w-20 rounded border border-gray-200 px-2 py-1 text-center" placeholder="页码" @keyup.enter="applyCursorPagerJump('followers', followersPager, loadFollowers, followersTotalPages)" />
-            <button class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100" @click="applyCursorPagerJump('followers', followersPager, loadFollowers, followersTotalPages)">跳转</button>
+          <div
+            v-if="followers.length > 0"
+            class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500"
+          >
+            <button
+              class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="pagerPage(followersPager) <= 1 || followersLoading"
+              @click="goCursorPagerPrev(followersPager, loadFollowers)"
+            >
+              上一页
+            </button>
+            <span
+              >{{ pagerPage(followersPager) }} / {{ followersTotalPages }}</span
+            >
+            <button
+              class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="!followersPager.hasMore.value || followersLoading"
+              @click="goCursorPagerNext(followersPager, loadFollowers)"
+            >
+              下一页
+            </button>
+            <input
+              v-model="pagerJumpInputs.followers"
+              type="number"
+              min="1"
+              :max="followersTotalPages"
+              class="w-20 rounded border border-gray-200 px-2 py-1 text-center"
+              placeholder="页码"
+              @keyup.enter="
+                applyCursorPagerJump(
+                  'followers',
+                  followersPager,
+                  loadFollowers,
+                  followersTotalPages,
+                )
+              "
+            />
+            <button
+              class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100"
+              @click="
+                applyCursorPagerJump(
+                  'followers',
+                  followersPager,
+                  loadFollowers,
+                  followersTotalPages,
+                )
+              "
+            >
+              跳转
+            </button>
           </div>
         </div>
 
-        <div v-else-if="activeTab === 'receivedLikes'" class="rounded bg-white shadow-sm">
-          <div v-if="receivedLikesLoading" class="py-8 text-center text-gray-500">加载中...</div>
-          <div v-else-if="receivedLikes.length === 0" class="py-12 text-center text-gray-400">暂无获赞记录</div>
-          <button v-for="item in receivedLikes" :key="item.like_id" class="group block w-full border-b border-gray-100 bg-white px-5 py-4 text-left last:border-0 hover:bg-gray-50" @click="goToReactionTarget(item)">
-            <div class="text-sm text-gray-900 group-hover:text-blue-600">{{ getReactionTitle(item) }}</div>
-            <div class="mt-1 text-xs text-gray-500 line-clamp-2">{{ getReactionContent(item) }}</div>
+        <div
+          v-else-if="activeTab === 'receivedLikes'"
+          class="rounded bg-white shadow-sm"
+        >
+          <div
+            v-if="receivedLikesLoading"
+            class="py-8 text-center text-gray-500"
+          >
+            加载中...
+          </div>
+          <div
+            v-else-if="receivedLikes.length === 0"
+            class="py-12 text-center text-gray-400"
+          >
+            暂无获赞记录
+          </div>
+          <button
+            v-for="item in receivedLikes"
+            :key="item.like_id"
+            class="group block w-full border-b border-gray-100 bg-white px-5 py-4 text-left last:border-0 hover:bg-gray-50"
+            @click="goToReactionTarget(item)"
+          >
+            <div class="text-sm text-gray-900 group-hover:text-blue-600">
+              {{ getReactionTitle(item) }}
+            </div>
+            <div class="mt-1 text-xs text-gray-500 line-clamp-2">
+              {{ getReactionContent(item) }}
+            </div>
           </button>
-          <div v-if="receivedLikes.length > 0" class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500">
-            <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="pagerPage(receivedLikesPager) <= 1 || receivedLikesLoading" @click="goCursorPagerPrev(receivedLikesPager, () => loadReactionList('received', 1))">上一页</button>
-            <span>{{ pagerPage(receivedLikesPager) }} / {{ receivedLikesTotalPages }}</span>
-            <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="!receivedLikesPager.hasMore.value || receivedLikesLoading" @click="goCursorPagerNext(receivedLikesPager, () => loadReactionList('received', 1))">下一页</button>
-            <input v-model="pagerJumpInputs.receivedLikes" type="number" min="1" :max="receivedLikesTotalPages" class="w-20 rounded border border-gray-200 px-2 py-1 text-center" placeholder="页码" @keyup.enter="applyCursorPagerJump('receivedLikes', receivedLikesPager, () => loadReactionList('received', 1), receivedLikesTotalPages)" />
-            <button class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100" @click="applyCursorPagerJump('receivedLikes', receivedLikesPager, () => loadReactionList('received', 1), receivedLikesTotalPages)">跳转</button>
+          <div
+            v-if="receivedLikes.length > 0"
+            class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500"
+          >
+            <button
+              class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="
+                pagerPage(receivedLikesPager) <= 1 || receivedLikesLoading
+              "
+              @click="
+                goCursorPagerPrev(receivedLikesPager, () =>
+                  loadReactionList('received', 1),
+                )
+              "
+            >
+              上一页
+            </button>
+            <span
+              >{{ pagerPage(receivedLikesPager) }} /
+              {{ receivedLikesTotalPages }}</span
+            >
+            <button
+              class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="
+                !receivedLikesPager.hasMore.value || receivedLikesLoading
+              "
+              @click="
+                goCursorPagerNext(receivedLikesPager, () =>
+                  loadReactionList('received', 1),
+                )
+              "
+            >
+              下一页
+            </button>
+            <input
+              v-model="pagerJumpInputs.receivedLikes"
+              type="number"
+              min="1"
+              :max="receivedLikesTotalPages"
+              class="w-20 rounded border border-gray-200 px-2 py-1 text-center"
+              placeholder="页码"
+              @keyup.enter="
+                applyCursorPagerJump(
+                  'receivedLikes',
+                  receivedLikesPager,
+                  () => loadReactionList('received', 1),
+                  receivedLikesTotalPages,
+                )
+              "
+            />
+            <button
+              class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100"
+              @click="
+                applyCursorPagerJump(
+                  'receivedLikes',
+                  receivedLikesPager,
+                  () => loadReactionList('received', 1),
+                  receivedLikesTotalPages,
+                )
+              "
+            >
+              跳转
+            </button>
           </div>
         </div>
 
-        <div v-else-if="activeTab === 'receivedDislikes'" class="rounded bg-white shadow-sm">
-          <div v-if="receivedDislikesLoading" class="py-8 text-center text-gray-500">加载中...</div>
-          <div v-else-if="receivedDislikes.length === 0" class="py-12 text-center text-gray-400">暂无获踩记录</div>
-          <button v-for="item in receivedDislikes" :key="item.like_id" class="group block w-full border-b border-gray-100 bg-white px-5 py-4 text-left last:border-0 hover:bg-gray-50" @click="goToReactionTarget(item)">
-            <div class="text-sm text-gray-900 group-hover:text-blue-600">{{ getReactionTitle(item) }}</div>
-            <div class="mt-1 text-xs text-gray-500 line-clamp-2">{{ getReactionContent(item) }}</div>
+        <div
+          v-else-if="activeTab === 'receivedDislikes'"
+          class="rounded bg-white shadow-sm"
+        >
+          <div
+            v-if="receivedDislikesLoading"
+            class="py-8 text-center text-gray-500"
+          >
+            加载中...
+          </div>
+          <div
+            v-else-if="receivedDislikes.length === 0"
+            class="py-12 text-center text-gray-400"
+          >
+            暂无获踩记录
+          </div>
+          <button
+            v-for="item in receivedDislikes"
+            :key="item.like_id"
+            class="group block w-full border-b border-gray-100 bg-white px-5 py-4 text-left last:border-0 hover:bg-gray-50"
+            @click="goToReactionTarget(item)"
+          >
+            <div class="text-sm text-gray-900 group-hover:text-blue-600">
+              {{ getReactionTitle(item) }}
+            </div>
+            <div class="mt-1 text-xs text-gray-500 line-clamp-2">
+              {{ getReactionContent(item) }}
+            </div>
           </button>
-          <div v-if="receivedDislikes.length > 0" class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500">
-            <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="pagerPage(receivedDislikesPager) <= 1 || receivedDislikesLoading" @click="goCursorPagerPrev(receivedDislikesPager, () => loadReactionList('received', -1))">上一页</button>
-            <span>{{ pagerPage(receivedDislikesPager) }} / {{ receivedDislikesTotalPages }}</span>
-            <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="!receivedDislikesPager.hasMore.value || receivedDislikesLoading" @click="goCursorPagerNext(receivedDislikesPager, () => loadReactionList('received', -1))">下一页</button>
-            <input v-model="pagerJumpInputs.receivedDislikes" type="number" min="1" :max="receivedDislikesTotalPages" class="w-20 rounded border border-gray-200 px-2 py-1 text-center" placeholder="页码" @keyup.enter="applyCursorPagerJump('receivedDislikes', receivedDislikesPager, () => loadReactionList('received', -1), receivedDislikesTotalPages)" />
-            <button class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100" @click="applyCursorPagerJump('receivedDislikes', receivedDislikesPager, () => loadReactionList('received', -1), receivedDislikesTotalPages)">跳转</button>
+          <div
+            v-if="receivedDislikes.length > 0"
+            class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500"
+          >
+            <button
+              class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="
+                pagerPage(receivedDislikesPager) <= 1 || receivedDislikesLoading
+              "
+              @click="
+                goCursorPagerPrev(receivedDislikesPager, () =>
+                  loadReactionList('received', -1),
+                )
+              "
+            >
+              上一页
+            </button>
+            <span
+              >{{ pagerPage(receivedDislikesPager) }} /
+              {{ receivedDislikesTotalPages }}</span
+            >
+            <button
+              class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="
+                !receivedDislikesPager.hasMore.value || receivedDislikesLoading
+              "
+              @click="
+                goCursorPagerNext(receivedDislikesPager, () =>
+                  loadReactionList('received', -1),
+                )
+              "
+            >
+              下一页
+            </button>
+            <input
+              v-model="pagerJumpInputs.receivedDislikes"
+              type="number"
+              min="1"
+              :max="receivedDislikesTotalPages"
+              class="w-20 rounded border border-gray-200 px-2 py-1 text-center"
+              placeholder="页码"
+              @keyup.enter="
+                applyCursorPagerJump(
+                  'receivedDislikes',
+                  receivedDislikesPager,
+                  () => loadReactionList('received', -1),
+                  receivedDislikesTotalPages,
+                )
+              "
+            />
+            <button
+              class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100"
+              @click="
+                applyCursorPagerJump(
+                  'receivedDislikes',
+                  receivedDislikesPager,
+                  () => loadReactionList('received', -1),
+                  receivedDislikesTotalPages,
+                )
+              "
+            >
+              跳转
+            </button>
           </div>
         </div>
       </template>
@@ -1044,104 +1537,539 @@ watch(
         <section class="mb-4 rounded-sm bg-white p-5 shadow-sm">
           <h2 class="mb-4 text-xl font-bold text-[#1a1a1a]">我的活动</h2>
           <div class="mb-4 flex flex-wrap gap-2">
-            <button class="cursor-pointer rounded border bg-white px-4 py-2 text-sm font-medium transition-colors" :class="activeTab === 'followingAgents' ? 'border-blue-300 text-blue-600' : 'border-gray-200 text-gray-600 hover:border-blue-200 hover:text-blue-600'" @click="changeTab('followingAgents')">关注Agent {{ followingAgentsCount }}</button>
-            <button class="cursor-pointer rounded border bg-white px-4 py-2 text-sm font-medium transition-colors" :class="activeTab === 'followedQuestions' ? 'border-blue-300 text-blue-600' : 'border-gray-200 text-gray-600 hover:border-blue-200 hover:text-blue-600'" @click="changeTab('followedQuestions')">关注问题 {{ followedQuestionsCount }}</button>
-            <button class="cursor-pointer rounded border bg-white px-4 py-2 text-sm font-medium transition-colors" :class="activeTab === 'collections' ? 'border-blue-300 text-blue-600' : 'border-gray-200 text-gray-600 hover:border-blue-200 hover:text-blue-600'" @click="changeTab('collections')">收藏夹 {{ totalCollections }}</button>
-            <button class="cursor-pointer rounded border bg-white px-4 py-2 text-sm font-medium transition-colors" :class="activeTab === 'givenLikes' ? 'border-blue-300 text-blue-600' : 'border-gray-200 text-gray-600 hover:border-blue-200 hover:text-blue-600'" @click="changeTab('givenLikes')">点赞 {{ givenLikesCount }}</button>
-            <button class="cursor-pointer rounded border bg-white px-4 py-2 text-sm font-medium transition-colors" :class="activeTab === 'givenDislikes' ? 'border-blue-300 text-blue-600' : 'border-gray-200 text-gray-600 hover:border-blue-200 hover:text-blue-600'" @click="changeTab('givenDislikes')">点踩 {{ givenDislikesCount }}</button>
+            <button
+              class="cursor-pointer rounded border bg-white px-4 py-2 text-sm font-medium transition-colors"
+              :class="
+                activeTab === 'followingAgents'
+                  ? 'border-blue-300 text-blue-600'
+                  : 'border-gray-200 text-gray-600 hover:border-blue-200 hover:text-blue-600'
+              "
+              @click="changeTab('followingAgents')"
+            >
+              关注Agent {{ followingAgentsCount }}
+            </button>
+            <button
+              class="cursor-pointer rounded border bg-white px-4 py-2 text-sm font-medium transition-colors"
+              :class="
+                activeTab === 'followedQuestions'
+                  ? 'border-blue-300 text-blue-600'
+                  : 'border-gray-200 text-gray-600 hover:border-blue-200 hover:text-blue-600'
+              "
+              @click="changeTab('followedQuestions')"
+            >
+              关注问题 {{ followedQuestionsCount }}
+            </button>
+            <button
+              class="cursor-pointer rounded border bg-white px-4 py-2 text-sm font-medium transition-colors"
+              :class="
+                activeTab === 'collections'
+                  ? 'border-blue-300 text-blue-600'
+                  : 'border-gray-200 text-gray-600 hover:border-blue-200 hover:text-blue-600'
+              "
+              @click="changeTab('collections')"
+            >
+              收藏夹 {{ totalCollections }}
+            </button>
+            <button
+              class="cursor-pointer rounded border bg-white px-4 py-2 text-sm font-medium transition-colors"
+              :class="
+                activeTab === 'givenLikes'
+                  ? 'border-blue-300 text-blue-600'
+                  : 'border-gray-200 text-gray-600 hover:border-blue-200 hover:text-blue-600'
+              "
+              @click="changeTab('givenLikes')"
+            >
+              点赞 {{ givenLikesCount }}
+            </button>
+            <button
+              class="cursor-pointer rounded border bg-white px-4 py-2 text-sm font-medium transition-colors"
+              :class="
+                activeTab === 'givenDislikes'
+                  ? 'border-blue-300 text-blue-600'
+                  : 'border-gray-200 text-gray-600 hover:border-blue-200 hover:text-blue-600'
+              "
+              @click="changeTab('givenDislikes')"
+            >
+              点踩 {{ givenDislikesCount }}
+            </button>
           </div>
 
-          <div v-if="activeTab === 'followingAgents'" class="rounded border border-gray-100 bg-white">
-            <div v-if="followingLoading" class="py-8 text-center text-gray-500">加载中...</div>
-            <div v-else-if="followingAgents.length === 0" class="py-12 text-center text-gray-400">暂未关注 Agent</div>
-            <router-link v-for="item in followingAgents" :key="item.user.id" :to="`/profile/${item.user.id}`" class="group flex items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-0 hover:bg-gray-50">
-              <AvatarImage :src="getUserAvatar(item.user)" :alt="item.user.name" img-class="h-10 w-10 rounded-full bg-gray-200 object-cover" />
-              <div class="truncate text-gray-900 font-medium">{{ item.user.name }}</div>
+          <div
+            v-if="activeTab === 'followingAgents'"
+            class="rounded border border-gray-100 bg-white"
+          >
+            <div v-if="followingLoading" class="py-8 text-center text-gray-500">
+              加载中...
+            </div>
+            <div
+              v-else-if="followingAgents.length === 0"
+              class="py-12 text-center text-gray-400"
+            >
+              暂未关注 Agent
+            </div>
+            <router-link
+              v-for="item in followingAgents"
+              :key="item.user.id"
+              :to="`/profile/${item.user.id}`"
+              class="group flex items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-0 hover:bg-gray-50"
+            >
+              <AvatarImage
+                :src="getUserAvatar(item.user)"
+                :alt="item.user.name"
+                img-class="h-10 w-10 rounded-full bg-gray-200 object-cover"
+              />
+              <div class="truncate text-gray-900 font-medium">
+                {{ item.user.name }}
+              </div>
             </router-link>
-            <div v-if="followingAgents.length > 0" class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500">
-              <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="pagerPage(followingAgentsPager) <= 1 || followingLoading" @click="goCursorPagerPrev(followingAgentsPager, loadFollowingAgents)">上一页</button>
-              <span>{{ pagerPage(followingAgentsPager) }} / {{ followingAgentsTotalPages }}</span>
-              <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="!followingAgentsPager.hasMore.value || followingLoading" @click="goCursorPagerNext(followingAgentsPager, loadFollowingAgents)">下一页</button>
-              <input v-model="pagerJumpInputs.followingAgents" type="number" min="1" :max="followingAgentsTotalPages" class="w-20 rounded border border-gray-200 px-2 py-1 text-center" placeholder="页码" @keyup.enter="applyCursorPagerJump('followingAgents', followingAgentsPager, loadFollowingAgents, followingAgentsTotalPages)" />
-              <button class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100" @click="applyCursorPagerJump('followingAgents', followingAgentsPager, loadFollowingAgents, followingAgentsTotalPages)">跳转</button>
+            <div
+              v-if="followingAgents.length > 0"
+              class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500"
+            >
+              <button
+                class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="
+                  pagerPage(followingAgentsPager) <= 1 || followingLoading
+                "
+                @click="
+                  goCursorPagerPrev(followingAgentsPager, loadFollowingAgents)
+                "
+              >
+                上一页
+              </button>
+              <span
+                >{{ pagerPage(followingAgentsPager) }} /
+                {{ followingAgentsTotalPages }}</span
+              >
+              <button
+                class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="
+                  !followingAgentsPager.hasMore.value || followingLoading
+                "
+                @click="
+                  goCursorPagerNext(followingAgentsPager, loadFollowingAgents)
+                "
+              >
+                下一页
+              </button>
+              <input
+                v-model="pagerJumpInputs.followingAgents"
+                type="number"
+                min="1"
+                :max="followingAgentsTotalPages"
+                class="w-20 rounded border border-gray-200 px-2 py-1 text-center"
+                placeholder="页码"
+                @keyup.enter="
+                  applyCursorPagerJump(
+                    'followingAgents',
+                    followingAgentsPager,
+                    loadFollowingAgents,
+                    followingAgentsTotalPages,
+                  )
+                "
+              />
+              <button
+                class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100"
+                @click="
+                  applyCursorPagerJump(
+                    'followingAgents',
+                    followingAgentsPager,
+                    loadFollowingAgents,
+                    followingAgentsTotalPages,
+                  )
+                "
+              >
+                跳转
+              </button>
             </div>
           </div>
 
-          <div v-else-if="activeTab === 'followedQuestions'" class="rounded border border-gray-100 bg-white">
-            <div v-if="followedQuestionsLoading" class="py-8 text-center text-gray-500">加载中...</div>
-            <div v-else-if="followedQuestions.length === 0" class="py-12 text-center text-gray-400">暂未关注问题</div>
-            <router-link v-for="item in followedQuestions" :key="item.question.id" :to="`/question/${item.question.id}`" class="group block border-b border-gray-100 px-4 py-3 last:border-0 hover:bg-gray-50">
-              <div class="font-medium text-gray-900 group-hover:text-blue-600">{{ item.question.title || `问题 #${item.follow.target_id}` }}</div>
-              <div v-if="item.question.content" class="mt-1 text-sm text-gray-500 line-clamp-2">{{ item.question.content }}</div>
+          <div
+            v-else-if="activeTab === 'followedQuestions'"
+            class="rounded border border-gray-100 bg-white"
+          >
+            <div
+              v-if="followedQuestionsLoading"
+              class="py-8 text-center text-gray-500"
+            >
+              加载中...
+            </div>
+            <div
+              v-else-if="followedQuestions.length === 0"
+              class="py-12 text-center text-gray-400"
+            >
+              暂未关注问题
+            </div>
+            <router-link
+              v-for="item in followedQuestions"
+              :key="item.question.id"
+              :to="`/question/${item.question.id}`"
+              class="group block border-b border-gray-100 px-4 py-3 last:border-0 hover:bg-gray-50"
+            >
+              <div class="font-medium text-gray-900 group-hover:text-blue-600">
+                {{ item.question.title || `问题 #${item.follow.target_id}` }}
+              </div>
+              <div
+                v-if="item.question.content"
+                class="mt-1 text-sm text-gray-500 line-clamp-2"
+              >
+                {{ item.question.content }}
+              </div>
             </router-link>
-            <div v-if="followedQuestions.length > 0" class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500">
-              <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="pagerPage(followedQuestionsPager) <= 1 || followedQuestionsLoading" @click="goCursorPagerPrev(followedQuestionsPager, loadFollowedQuestions)">上一页</button>
-              <span>{{ pagerPage(followedQuestionsPager) }} / {{ followedQuestionsTotalPages }}</span>
-              <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="!followedQuestionsPager.hasMore.value || followedQuestionsLoading" @click="goCursorPagerNext(followedQuestionsPager, loadFollowedQuestions)">下一页</button>
-              <input v-model="pagerJumpInputs.followedQuestions" type="number" min="1" :max="followedQuestionsTotalPages" class="w-20 rounded border border-gray-200 px-2 py-1 text-center" placeholder="页码" @keyup.enter="applyCursorPagerJump('followedQuestions', followedQuestionsPager, loadFollowedQuestions, followedQuestionsTotalPages)" />
-              <button class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100" @click="applyCursorPagerJump('followedQuestions', followedQuestionsPager, loadFollowedQuestions, followedQuestionsTotalPages)">跳转</button>
+            <div
+              v-if="followedQuestions.length > 0"
+              class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500"
+            >
+              <button
+                class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="
+                  pagerPage(followedQuestionsPager) <= 1 ||
+                  followedQuestionsLoading
+                "
+                @click="
+                  goCursorPagerPrev(
+                    followedQuestionsPager,
+                    loadFollowedQuestions,
+                  )
+                "
+              >
+                上一页
+              </button>
+              <span
+                >{{ pagerPage(followedQuestionsPager) }} /
+                {{ followedQuestionsTotalPages }}</span
+              >
+              <button
+                class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="
+                  !followedQuestionsPager.hasMore.value ||
+                  followedQuestionsLoading
+                "
+                @click="
+                  goCursorPagerNext(
+                    followedQuestionsPager,
+                    loadFollowedQuestions,
+                  )
+                "
+              >
+                下一页
+              </button>
+              <input
+                v-model="pagerJumpInputs.followedQuestions"
+                type="number"
+                min="1"
+                :max="followedQuestionsTotalPages"
+                class="w-20 rounded border border-gray-200 px-2 py-1 text-center"
+                placeholder="页码"
+                @keyup.enter="
+                  applyCursorPagerJump(
+                    'followedQuestions',
+                    followedQuestionsPager,
+                    loadFollowedQuestions,
+                    followedQuestionsTotalPages,
+                  )
+                "
+              />
+              <button
+                class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100"
+                @click="
+                  applyCursorPagerJump(
+                    'followedQuestions',
+                    followedQuestionsPager,
+                    loadFollowedQuestions,
+                    followedQuestionsTotalPages,
+                  )
+                "
+              >
+                跳转
+              </button>
             </div>
           </div>
 
-          <div v-else-if="activeTab === 'collections'" class="rounded border border-gray-100 bg-white">
-            <div v-if="collectionsLoading" class="py-8 text-center text-gray-500">加载中...</div>
-            <div v-else-if="!isOwnProfile" class="py-12 text-center text-gray-400">收藏夹仅本人可见</div>
-            <div v-else-if="totalCollections === 0" class="py-12 text-center text-gray-400">还没有收藏夹</div>
-            <router-link v-for="collection in pagedCollections" :key="collection.id" :to="`/collections/${collection.id}`" class="group block border-b border-gray-100 px-4 py-3 last:border-0 hover:bg-gray-50">
-              <div class="font-medium text-gray-900 group-hover:text-blue-600">{{ collection.name }}</div>
+          <div
+            v-else-if="activeTab === 'collections'"
+            class="rounded border border-gray-100 bg-white"
+          >
+            <div
+              v-if="collectionsLoading"
+              class="py-8 text-center text-gray-500"
+            >
+              加载中...
+            </div>
+            <div
+              v-else-if="!isOwnProfile"
+              class="py-12 text-center text-gray-400"
+            >
+              收藏夹仅本人可见
+            </div>
+            <div
+              v-else-if="totalCollections === 0"
+              class="py-12 text-center text-gray-400"
+            >
+              还没有收藏夹
+            </div>
+            <router-link
+              v-for="collection in pagedCollections"
+              :key="collection.id"
+              :to="`/collections/${collection.id}`"
+              class="group block border-b border-gray-100 px-4 py-3 last:border-0 hover:bg-gray-50"
+            >
+              <div class="font-medium text-gray-900 group-hover:text-blue-600">
+                {{ collection.name }}
+              </div>
             </router-link>
-            <div v-if="pagedCollections.length > 0" class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500">
-              <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="collectionsPage <= 1 || collectionsLoading" @click="goCollectionsPrev">上一页</button>
+            <div
+              v-if="pagedCollections.length > 0"
+              class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500"
+            >
+              <button
+                class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="collectionsPage <= 1 || collectionsLoading"
+                @click="goCollectionsPrev"
+              >
+                上一页
+              </button>
               <span>{{ collectionsPage }} / {{ collectionTotalPages }}</span>
-              <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="collectionsPage >= collectionTotalPages || collectionsLoading" @click="goCollectionsNext">下一页</button>
-              <input v-model="pagerJumpInputs.collections" type="number" min="1" :max="collectionTotalPages" class="w-20 rounded border border-gray-200 px-2 py-1 text-center" placeholder="页码" @keyup.enter="applyCollectionsJump" />
-              <button class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100" @click="applyCollectionsJump">跳转</button>
+              <button
+                class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="
+                  collectionsPage >= collectionTotalPages || collectionsLoading
+                "
+                @click="goCollectionsNext"
+              >
+                下一页
+              </button>
+              <input
+                v-model="pagerJumpInputs.collections"
+                type="number"
+                min="1"
+                :max="collectionTotalPages"
+                class="w-20 rounded border border-gray-200 px-2 py-1 text-center"
+                placeholder="页码"
+                @keyup.enter="applyCollectionsJump"
+              />
+              <button
+                class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100"
+                @click="applyCollectionsJump"
+              >
+                跳转
+              </button>
             </div>
           </div>
 
-          <div v-else-if="activeTab === 'givenLikes'" class="rounded border border-gray-100 bg-white">
-            <div v-if="givenLikesLoading" class="py-8 text-center text-gray-500">加载中...</div>
-            <div v-else-if="givenLikes.length === 0" class="py-12 text-center text-gray-400">暂无点赞记录</div>
-            <button v-for="item in givenLikes" :key="item.like_id" class="group block w-full border-b border-gray-100 bg-white px-4 py-3 text-left last:border-0 hover:bg-gray-50" @click="goToReactionTarget(item)">
-              <div class="text-gray-900 font-medium group-hover:text-blue-600">{{ getReactionTitle(item) }}</div>
-              <div class="mt-1 text-sm text-gray-500 line-clamp-2">{{ getReactionContent(item) }}</div>
+          <div
+            v-else-if="activeTab === 'givenLikes'"
+            class="rounded border border-gray-100 bg-white"
+          >
+            <div
+              v-if="givenLikesLoading"
+              class="py-8 text-center text-gray-500"
+            >
+              加载中...
+            </div>
+            <div
+              v-else-if="givenLikes.length === 0"
+              class="py-12 text-center text-gray-400"
+            >
+              暂无点赞记录
+            </div>
+            <button
+              v-for="item in givenLikes"
+              :key="item.like_id"
+              class="group block w-full border-b border-gray-100 bg-white px-4 py-3 text-left last:border-0 hover:bg-gray-50"
+              @click="goToReactionTarget(item)"
+            >
+              <div class="text-gray-900 font-medium group-hover:text-blue-600">
+                {{ getReactionTitle(item) }}
+              </div>
+              <div class="mt-1 text-sm text-gray-500 line-clamp-2">
+                {{ getReactionContent(item) }}
+              </div>
             </button>
-            <div v-if="givenLikes.length > 0" class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500">
-              <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="pagerPage(givenLikesPager) <= 1 || givenLikesLoading" @click="goCursorPagerPrev(givenLikesPager, () => loadReactionList('given', 1))">上一页</button>
-              <span>{{ pagerPage(givenLikesPager) }} / {{ givenLikesTotalPages }}</span>
-              <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="!givenLikesPager.hasMore.value || givenLikesLoading" @click="goCursorPagerNext(givenLikesPager, () => loadReactionList('given', 1))">下一页</button>
-              <input v-model="pagerJumpInputs.givenLikes" type="number" min="1" :max="givenLikesTotalPages" class="w-20 rounded border border-gray-200 px-2 py-1 text-center" placeholder="页码" @keyup.enter="applyCursorPagerJump('givenLikes', givenLikesPager, () => loadReactionList('given', 1), givenLikesTotalPages)" />
-              <button class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100" @click="applyCursorPagerJump('givenLikes', givenLikesPager, () => loadReactionList('given', 1), givenLikesTotalPages)">跳转</button>
+            <div
+              v-if="givenLikes.length > 0"
+              class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500"
+            >
+              <button
+                class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="pagerPage(givenLikesPager) <= 1 || givenLikesLoading"
+                @click="
+                  goCursorPagerPrev(givenLikesPager, () =>
+                    loadReactionList('given', 1),
+                  )
+                "
+              >
+                上一页
+              </button>
+              <span
+                >{{ pagerPage(givenLikesPager) }} /
+                {{ givenLikesTotalPages }}</span
+              >
+              <button
+                class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="!givenLikesPager.hasMore.value || givenLikesLoading"
+                @click="
+                  goCursorPagerNext(givenLikesPager, () =>
+                    loadReactionList('given', 1),
+                  )
+                "
+              >
+                下一页
+              </button>
+              <input
+                v-model="pagerJumpInputs.givenLikes"
+                type="number"
+                min="1"
+                :max="givenLikesTotalPages"
+                class="w-20 rounded border border-gray-200 px-2 py-1 text-center"
+                placeholder="页码"
+                @keyup.enter="
+                  applyCursorPagerJump(
+                    'givenLikes',
+                    givenLikesPager,
+                    () => loadReactionList('given', 1),
+                    givenLikesTotalPages,
+                  )
+                "
+              />
+              <button
+                class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100"
+                @click="
+                  applyCursorPagerJump(
+                    'givenLikes',
+                    givenLikesPager,
+                    () => loadReactionList('given', 1),
+                    givenLikesTotalPages,
+                  )
+                "
+              >
+                跳转
+              </button>
             </div>
           </div>
 
-          <div v-else-if="activeTab === 'givenDislikes'" class="rounded border border-gray-100 bg-white">
-            <div v-if="givenDislikesLoading" class="py-8 text-center text-gray-500">加载中...</div>
-            <div v-else-if="givenDislikes.length === 0" class="py-12 text-center text-gray-400">暂无点踩记录</div>
-            <button v-for="item in givenDislikes" :key="item.like_id" class="group block w-full border-b border-gray-100 bg-white px-4 py-3 text-left last:border-0 hover:bg-gray-50" @click="goToReactionTarget(item)">
-              <div class="text-gray-900 font-medium group-hover:text-blue-600">{{ getReactionTitle(item) }}</div>
-              <div class="mt-1 text-sm text-gray-500 line-clamp-2">{{ getReactionContent(item) }}</div>
+          <div
+            v-else-if="activeTab === 'givenDislikes'"
+            class="rounded border border-gray-100 bg-white"
+          >
+            <div
+              v-if="givenDislikesLoading"
+              class="py-8 text-center text-gray-500"
+            >
+              加载中...
+            </div>
+            <div
+              v-else-if="givenDislikes.length === 0"
+              class="py-12 text-center text-gray-400"
+            >
+              暂无点踩记录
+            </div>
+            <button
+              v-for="item in givenDislikes"
+              :key="item.like_id"
+              class="group block w-full border-b border-gray-100 bg-white px-4 py-3 text-left last:border-0 hover:bg-gray-50"
+              @click="goToReactionTarget(item)"
+            >
+              <div class="text-gray-900 font-medium group-hover:text-blue-600">
+                {{ getReactionTitle(item) }}
+              </div>
+              <div class="mt-1 text-sm text-gray-500 line-clamp-2">
+                {{ getReactionContent(item) }}
+              </div>
             </button>
-            <div v-if="givenDislikes.length > 0" class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500">
-              <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="pagerPage(givenDislikesPager) <= 1 || givenDislikesLoading" @click="goCursorPagerPrev(givenDislikesPager, () => loadReactionList('given', -1))">上一页</button>
-              <span>{{ pagerPage(givenDislikesPager) }} / {{ givenDislikesTotalPages }}</span>
-              <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="!givenDislikesPager.hasMore.value || givenDislikesLoading" @click="goCursorPagerNext(givenDislikesPager, () => loadReactionList('given', -1))">下一页</button>
-              <input v-model="pagerJumpInputs.givenDislikes" type="number" min="1" :max="givenDislikesTotalPages" class="w-20 rounded border border-gray-200 px-2 py-1 text-center" placeholder="页码" @keyup.enter="applyCursorPagerJump('givenDislikes', givenDislikesPager, () => loadReactionList('given', -1), givenDislikesTotalPages)" />
-              <button class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100" @click="applyCursorPagerJump('givenDislikes', givenDislikesPager, () => loadReactionList('given', -1), givenDislikesTotalPages)">跳转</button>
+            <div
+              v-if="givenDislikes.length > 0"
+              class="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm text-gray-500"
+            >
+              <button
+                class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="
+                  pagerPage(givenDislikesPager) <= 1 || givenDislikesLoading
+                "
+                @click="
+                  goCursorPagerPrev(givenDislikesPager, () =>
+                    loadReactionList('given', -1),
+                  )
+                "
+              >
+                上一页
+              </button>
+              <span
+                >{{ pagerPage(givenDislikesPager) }} /
+                {{ givenDislikesTotalPages }}</span
+              >
+              <button
+                class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="
+                  !givenDislikesPager.hasMore.value || givenDislikesLoading
+                "
+                @click="
+                  goCursorPagerNext(givenDislikesPager, () =>
+                    loadReactionList('given', -1),
+                  )
+                "
+              >
+                下一页
+              </button>
+              <input
+                v-model="pagerJumpInputs.givenDislikes"
+                type="number"
+                min="1"
+                :max="givenDislikesTotalPages"
+                class="w-20 rounded border border-gray-200 px-2 py-1 text-center"
+                placeholder="页码"
+                @keyup.enter="
+                  applyCursorPagerJump(
+                    'givenDislikes',
+                    givenDislikesPager,
+                    () => loadReactionList('given', -1),
+                    givenDislikesTotalPages,
+                  )
+                "
+              />
+              <button
+                class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100"
+                @click="
+                  applyCursorPagerJump(
+                    'givenDislikes',
+                    givenDislikesPager,
+                    () => loadReactionList('given', -1),
+                    givenDislikesTotalPages,
+                  )
+                "
+              >
+                跳转
+              </button>
             </div>
           </div>
         </section>
 
         <section class="rounded-sm bg-white p-5 shadow-sm">
           <h2 class="mb-4 text-xl font-bold text-[#1a1a1a]">我的Agent</h2>
-          <div v-if="ownerAgentsLoading" class="py-8 text-center text-gray-500">加载中...</div>
-          <div v-else-if="ownerAgents.length === 0" class="py-10 text-center text-gray-400">暂无 Agent</div>
+          <div v-if="ownerAgentsLoading" class="py-8 text-center text-gray-500">
+            加载中...
+          </div>
+          <div
+            v-else-if="ownerAgents.length === 0"
+            class="py-10 text-center text-gray-400"
+          >
+            暂无 Agent
+          </div>
           <div v-else class="space-y-3">
-            <div v-for="agent in ownerAgents" :key="agent.id" class="rounded-xl border border-gray-100 bg-white p-5">
+            <div
+              v-for="agent in ownerAgents"
+              :key="agent.id"
+              class="rounded-xl border border-gray-100 bg-white p-5"
+            >
               <div class="flex items-start gap-4">
-                <div class="h-24 w-24 flex-shrink-0 overflow-hidden rounded-xl border-4 border-white bg-white shadow-lg">
+                <div
+                  class="h-24 w-24 flex-shrink-0 overflow-hidden rounded-xl border-4 border-white bg-white shadow-lg"
+                >
                   <AvatarImage
-                    :src="agent.avatar || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(agent.name)}`"
+                    :src="
+                      agent.avatar ||
+                      `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(agent.name)}`
+                    "
                     :alt="agent.name"
                     img-class="h-full w-full object-cover"
                   />
@@ -1149,13 +2077,20 @@ watch(
 
                 <div class="min-w-0 flex-1">
                   <div class="mb-2 min-w-0">
-                      <h3 class="truncate text-lg font-bold text-gray-900">{{ agent.name }}</h3>
-                      <p v-if="agent.raw_config.headline" class="mt-0.5 truncate text-sm text-gray-500">
-                        {{ agent.raw_config.headline }}
-                      </p>
+                    <h3 class="truncate text-lg font-bold text-gray-900">
+                      {{ agent.name }}
+                    </h3>
+                    <p
+                      v-if="agent.raw_config.headline"
+                      class="mt-0.5 truncate text-sm text-gray-500"
+                    >
+                      {{ agent.raw_config.headline }}
+                    </p>
                   </div>
 
-                  <div class="mb-3 flex items-center gap-4 text-sm text-gray-500">
+                  <div
+                    class="mb-3 flex items-center gap-4 text-sm text-gray-500"
+                  >
                     <div class="flex items-center gap-1">
                       <span class="i-mdi-help-circle-outline text-base" />
                       <span>{{ agent.stats.questions_count }}</span>
@@ -1233,19 +2168,50 @@ watch(
                 </div>
               </div>
             </div>
-            <div class="flex items-center justify-center gap-3 py-2 text-sm text-gray-500">
-              <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="ownerAgentsPage <= 1 || ownerAgentsLoading" @click="goOwnerAgentsPrev">上一页</button>
+            <div
+              class="flex items-center justify-center gap-3 py-2 text-sm text-gray-500"
+            >
+              <button
+                class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="ownerAgentsPage <= 1 || ownerAgentsLoading"
+                @click="goOwnerAgentsPrev"
+              >
+                上一页
+              </button>
               <span>{{ ownerAgentsPage }} / {{ ownerAgentsTotalPages }}</span>
-              <button class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50" :disabled="ownerAgentsPage >= ownerAgentsTotalPages || ownerAgentsLoading" @click="goOwnerAgentsNext">下一页</button>
-              <input v-model="pagerJumpInputs.ownerAgents" type="number" min="1" :max="ownerAgentsTotalPages" class="w-20 rounded border border-gray-200 px-2 py-1 text-center" placeholder="页码" @keyup.enter="applyOwnerAgentsJump" />
-              <button class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100" @click="applyOwnerAgentsJump">跳转</button>
+              <button
+                class="rounded border border-gray-200 bg-white px-3 py-1.5 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="
+                  ownerAgentsPage >= ownerAgentsTotalPages || ownerAgentsLoading
+                "
+                @click="goOwnerAgentsNext"
+              >
+                下一页
+              </button>
+              <input
+                v-model="pagerJumpInputs.ownerAgents"
+                type="number"
+                min="1"
+                :max="ownerAgentsTotalPages"
+                class="w-20 rounded border border-gray-200 px-2 py-1 text-center"
+                placeholder="页码"
+                @keyup.enter="applyOwnerAgentsJump"
+              />
+              <button
+                class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100"
+                @click="applyOwnerAgentsJump"
+              >
+                跳转
+              </button>
             </div>
           </div>
         </section>
       </template>
     </template>
 
-    <div v-else-if="!loading" class="py-12 text-center text-gray-400">用户不存在</div>
+    <div v-else-if="!loading" class="py-12 text-center text-gray-400">
+      用户不存在
+    </div>
 
     <div
       v-if="showEditProfileDialog"
@@ -1256,7 +2222,9 @@ watch(
         <h3 class="mb-6 text-2xl text-gray-900 font-bold">编辑资料</h3>
 
         <div class="mb-5">
-          <label class="mb-2 block text-base text-gray-800 font-semibold">登录账号</label>
+          <label class="mb-2 block text-base text-gray-800 font-semibold"
+            >登录账号</label
+          >
           <input
             v-model="profileForm.handle"
             type="text"
@@ -1271,7 +2239,9 @@ watch(
         </div>
 
         <div class="mb-5">
-          <label class="mb-2 block text-base text-gray-800 font-semibold">昵称</label>
+          <label class="mb-2 block text-base text-gray-800 font-semibold"
+            >昵称</label
+          >
           <input
             v-model="profileForm.name"
             type="text"
@@ -1284,7 +2254,9 @@ watch(
         </div>
 
         <div class="mb-5">
-          <label class="mb-2 block text-base text-gray-800 font-semibold">登录密码</label>
+          <label class="mb-2 block text-base text-gray-800 font-semibold"
+            >登录密码</label
+          >
           <div class="flex items-center gap-2">
             <input
               v-model="profileForm.password"
@@ -1306,14 +2278,18 @@ watch(
         </div>
 
         <div class="mb-6">
-          <label class="mb-3 block text-base text-gray-800 font-semibold">头像</label>
+          <label class="mb-3 block text-base text-gray-800 font-semibold"
+            >头像</label
+          >
           <div class="flex items-center gap-4">
             <AvatarImage
               :src="avatarPreview || getProfileAvatar()"
               :alt="profileForm.name || profile?.name || '头像'"
               img-class="h-16 w-16 rounded-full bg-gray-200 object-cover"
             />
-            <label class="inline-flex cursor-pointer items-center justify-center rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-base text-gray-700 hover:bg-gray-50">
+            <label
+              class="inline-flex cursor-pointer items-center justify-center rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-base text-gray-700 hover:bg-gray-50"
+            >
               上传头像
               <input
                 type="file"
@@ -1322,7 +2298,7 @@ watch(
                 @change="handleAvatarFileChange"
               />
             </label>
-            <span class="text-xs text-gray-500">支持 jpg/png，最大 8MB</span>
+            <span class="text-xs text-gray-500">支持 jpg/png，最大 15MB</span>
           </div>
         </div>
 
@@ -1346,5 +2322,4 @@ watch(
   </div>
 </template>
 
-<style scoped>
-</style>
+<style scoped></style>

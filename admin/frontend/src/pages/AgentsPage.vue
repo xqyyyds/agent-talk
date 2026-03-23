@@ -336,6 +336,7 @@ const avatarFileInput = ref<HTMLInputElement | null>(null);
 
 const editMode = ref(false);
 const editingAgentId = ref<number | null>(null);
+const initialEditPayload = ref<Record<string, any> | null>(null);
 
 const listFilter = ref<"all" | "system" | "custom">("all");
 const keyword = ref("");
@@ -353,7 +354,8 @@ const filteredRows = computed(() => {
       return true;
     }
     const cfg = parseRawConfig(row.raw_config);
-    const text = `${row.name} ${cfg.topics.join(" ")} ${cfg.headline} ${cfg.style_tag}`.toLowerCase();
+    const text =
+      `${row.name} ${cfg.topics.join(" ")} ${cfg.headline} ${cfg.style_tag}`.toLowerCase();
     return text.includes(search);
   });
 });
@@ -405,8 +407,8 @@ function handleAvatarUpload(event: Event) {
     error.value = "请选择图片文件（JPG/PNG/GIF）";
     return;
   }
-  if (file.size > 8 * 1024 * 1024) {
-    error.value = "头像大小不能超过 8MB";
+  if (file.size > 15 * 1024 * 1024) {
+    error.value = "头像大小不能超过 15MB";
     return;
   }
   const reader = new FileReader();
@@ -458,9 +460,12 @@ function normalizeModelCatalogPayload(data: any) {
   }));
   if (
     form.model_source === "system" &&
-    (!form.model_id || !modelOptions.value.some((item) => item.id === form.model_id))
+    (!form.model_id ||
+      !modelOptions.value.some((item) => item.id === form.model_id))
   ) {
-    const fallback = modelOptions.value.find((item) => item.is_default) || modelOptions.value[0];
+    const fallback =
+      modelOptions.value.find((item) => item.is_default) ||
+      modelOptions.value[0];
     form.model_id = fallback?.id || "";
   }
 }
@@ -490,7 +495,9 @@ function setModelSource(source: "system" | "custom") {
       model: "",
     };
     if (!form.model_id) {
-      const fallback = modelOptions.value.find((item) => item.is_default) || modelOptions.value[0];
+      const fallback =
+        modelOptions.value.find((item) => item.is_default) ||
+        modelOptions.value[0];
       form.model_id = fallback?.id || "";
     }
   }
@@ -499,6 +506,7 @@ function setModelSource(source: "system" | "custom") {
 function resetToCreateMode() {
   editMode.value = false;
   editingAgentId.value = null;
+  initialEditPayload.value = null;
   mergeForm(defaultForm());
   optimizedPrompt.value = "";
   testReply.value = "";
@@ -556,7 +564,11 @@ function validateForm(): boolean {
     if (!editMode.value && !form.custom_model.api_key.trim()) {
       nextErrors.custom_model_api_key = "新建自定义模型时必须填写 API Key";
     }
-    if (editMode.value && !customModelKeyMasked.value && !form.custom_model.api_key.trim()) {
+    if (
+      editMode.value &&
+      !customModelKeyMasked.value &&
+      !form.custom_model.api_key.trim()
+    ) {
       nextErrors.custom_model_api_key = "请填写 API Key";
     }
   }
@@ -657,19 +669,40 @@ function buildPayload() {
   };
 }
 
-async function submitAgent() {
-  if (!validateForm()) {
-    return;
+function buildPatchPayload(
+  basePayload: Record<string, any>,
+  nextPayload: Record<string, any>,
+) {
+  const patch: Record<string, any> = {};
+  for (const key of Object.keys(nextPayload)) {
+    const prev = basePayload[key];
+    const next = nextPayload[key];
+    if (JSON.stringify(prev) !== JSON.stringify(next)) {
+      patch[key] = next;
+    }
   }
+  return patch;
+}
+
+async function submitAgent() {
   saving.value = true;
   clearMessages();
   try {
     const payload = buildPayload();
     let successMessage = "Agent 创建成功";
     if (editMode.value && editingAgentId.value !== null) {
-      await api.updateAgent(editingAgentId.value, payload);
+      const base = initialEditPayload.value || {};
+      const patch = buildPatchPayload(base, payload);
+      if (Object.keys(patch).length === 0) {
+        success.value = "未检测到变更";
+        return;
+      }
+      await api.updateAgent(editingAgentId.value, patch);
       successMessage = `Agent #${editingAgentId.value} 更新成功`;
     } else {
+      if (!validateForm()) {
+        return;
+      }
       await api.createAgent(payload);
     }
     await loadAgents();
@@ -686,7 +719,9 @@ function editRow(row: AgentRow) {
   const cfg = parseRawConfig(row.raw_config);
   const modelInfo = row.model_info || {};
   const modelSource =
-    row.model_source === "custom" || modelInfo.source === "custom" ? "custom" : "system";
+    row.model_source === "custom" || modelInfo.source === "custom"
+      ? "custom"
+      : "system";
   editMode.value = true;
   editingAgentId.value = row.id;
   mergeForm({
@@ -704,7 +739,12 @@ function editRow(row: AgentRow) {
     is_system: Boolean(row.is_system),
     avatar: row.avatar || "",
     model_source: modelSource,
-    model_id: String(row.model_id || modelInfo.configured_model_id || modelInfo.effective_model_id || ""),
+    model_id: String(
+      row.model_id ||
+        modelInfo.configured_model_id ||
+        modelInfo.effective_model_id ||
+        "",
+    ),
     custom_model: {
       label: String(modelInfo.label || ""),
       base_url: String(modelInfo.base_url || ""),
@@ -712,6 +752,7 @@ function editRow(row: AgentRow) {
       model: String(modelInfo.model || ""),
     },
   });
+  initialEditPayload.value = buildPayload();
   customModelKeyMasked.value = String(modelInfo.api_key_masked || "");
   revealCustomApiKey.value = false;
   optimizedPrompt.value = "";
@@ -747,7 +788,11 @@ onMounted(async () => {
   <div class="grid agents-grid">
     <div class="panel">
       <p class="section-title">
-        {{ editMode ? `编辑 Agent #${editingAgentId}` : "新建 Agent（与前台配置对齐）" }}
+        {{
+          editMode
+            ? `编辑 Agent #${editingAgentId}`
+            : "新建 Agent（与前台配置对齐）"
+        }}
       </p>
 
       <div v-if="error" class="panel-soft error-box">{{ error }}</div>
@@ -755,15 +800,27 @@ onMounted(async () => {
 
       <div class="stack">
         <label>Agent 名称</label>
-        <input v-model="form.name" placeholder="例如：毒舌影评人、温柔心理医生" />
+        <input
+          v-model="form.name"
+          placeholder="例如：毒舌影评人、温柔心理医生"
+        />
         <p v-if="formErrors.name" class="form-error">{{ formErrors.name }}</p>
 
         <label>一句话介绍</label>
-        <input v-model="form.headline" placeholder="例如：专业毒舌，但影评犀利" />
-        <p v-if="formErrors.headline" class="form-error">{{ formErrors.headline }}</p>
+        <input
+          v-model="form.headline"
+          placeholder="例如：专业毒舌，但影评犀利"
+        />
+        <p v-if="formErrors.headline" class="form-error">
+          {{ formErrors.headline }}
+        </p>
 
         <label>详细描述</label>
-        <textarea v-model="form.bio" rows="4" placeholder="详细描述 Agent 的性格、背景和说话风格" />
+        <textarea
+          v-model="form.bio"
+          rows="4"
+          placeholder="详细描述 Agent 的性格、背景和说话风格"
+        />
         <p v-if="formErrors.bio" class="form-error">{{ formErrors.bio }}</p>
 
         <label>擅长话题（可多选）</label>
@@ -790,7 +847,9 @@ onMounted(async () => {
             {{ topic }} ×
           </span>
         </div>
-        <p v-if="formErrors.topics" class="form-error">{{ formErrors.topics }}</p>
+        <p v-if="formErrors.topics" class="form-error">
+          {{ formErrors.topics }}
+        </p>
 
         <label>人设风格（快捷预设）</label>
         <div class="preset-grid">
@@ -821,7 +880,9 @@ onMounted(async () => {
             {{ item }}
           </option>
         </select>
-        <p v-if="formErrors.style_tag" class="form-error">{{ formErrors.style_tag }}</p>
+        <p v-if="formErrors.style_tag" class="form-error">
+          {{ formErrors.style_tag }}
+        </p>
 
         <label>回复模式</label>
         <select v-model="form.reply_mode">
@@ -829,7 +890,9 @@ onMounted(async () => {
             {{ item }}
           </option>
         </select>
-        <p v-if="formErrors.reply_mode" class="form-error">{{ formErrors.reply_mode }}</p>
+        <p v-if="formErrors.reply_mode" class="form-error">
+          {{ formErrors.reply_mode }}
+        </p>
 
         <label>表达控制</label>
         <div class="choice-grid">
@@ -861,7 +924,9 @@ onMounted(async () => {
 
         <label>归属用户 ID（系统 Agent 建议为 0）</label>
         <input v-model.number="form.owner_id" type="number" min="0" />
-        <p v-if="formErrors.owner_id" class="form-error">{{ formErrors.owner_id }}</p>
+        <p v-if="formErrors.owner_id" class="form-error">
+          {{ formErrors.owner_id }}
+        </p>
 
         <label class="row switch-row">
           <input v-model="form.is_system" type="checkbox" />
@@ -895,17 +960,25 @@ onMounted(async () => {
             {{ loadingModelCatalog ? "刷新中..." : "刷新模型列表" }}
           </button>
         </div>
-        <p v-if="modelCatalogError" class="form-error">{{ modelCatalogError }}</p>
+        <p v-if="modelCatalogError" class="form-error">
+          {{ modelCatalogError }}
+        </p>
 
         <template v-if="form.model_source === 'system'">
           <label>系统模型</label>
           <select v-model="form.model_id">
             <option value="" disabled>请选择系统模型</option>
-            <option v-for="item in modelOptions" :key="item.id" :value="item.id">
+            <option
+              v-for="item in modelOptions"
+              :key="item.id"
+              :value="item.id"
+            >
               {{ item.label }}{{ item.is_default ? "（默认）" : "" }}
             </option>
           </select>
-          <p v-if="formErrors.model_id" class="form-error">{{ formErrors.model_id }}</p>
+          <p v-if="formErrors.model_id" class="form-error">
+            {{ formErrors.model_id }}
+          </p>
         </template>
 
         <template v-else>
@@ -956,7 +1029,9 @@ onMounted(async () => {
               {{ revealCustomApiKey ? "隐藏" : "显示" }}
             </button>
           </div>
-          <p v-if="customModelKeyMasked" class="muted">当前已保存：{{ customModelKeyMasked }}</p>
+          <p v-if="customModelKeyMasked" class="muted">
+            当前已保存：{{ customModelKeyMasked }}
+          </p>
           <p v-if="formErrors.custom_model_api_key" class="form-error">
             {{ formErrors.custom_model_api_key }}
           </p>
@@ -966,7 +1041,10 @@ onMounted(async () => {
         <div class="avatar-row">
           <div class="avatar-preview">
             <img
-              :src="form.avatar || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(form.name || 'default')}`"
+              :src="
+                form.avatar ||
+                `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(form.name || 'default')}`
+              "
               :alt="form.name || 'Agent Avatar'"
             />
           </div>
@@ -979,7 +1057,11 @@ onMounted(async () => {
               @change="handleAvatarUpload"
             />
             <div class="row">
-              <button type="button" class="secondary" @click="triggerAvatarUpload">
+              <button
+                type="button"
+                class="secondary"
+                @click="triggerAvatarUpload"
+              >
                 上传头像
               </button>
               <button
@@ -999,10 +1081,18 @@ onMounted(async () => {
         </div>
 
         <label>System Prompt</label>
-        <textarea v-model="form.system_prompt" rows="5" placeholder="可先优化生成，再手工微调" />
+        <textarea
+          v-model="form.system_prompt"
+          rows="5"
+          placeholder="可先优化生成，再手工微调"
+        />
 
         <div class="row">
-          <button class="secondary" :disabled="optimizing" @click="optimizePrompt">
+          <button
+            class="secondary"
+            :disabled="optimizing"
+            @click="optimizePrompt"
+          >
             {{ optimizing ? "优化中..." : "生成系统提示词" }}
           </button>
           <button class="secondary" :disabled="testing" @click="playground">
@@ -1012,7 +1102,12 @@ onMounted(async () => {
 
         <label>测试问题</label>
         <input v-model="testQuestion" placeholder="输入测试问题" />
-        <textarea v-model="testReply" rows="3" placeholder="测试回答输出" readonly />
+        <textarea
+          v-model="testReply"
+          rows="3"
+          placeholder="测试回答输出"
+          readonly
+        />
 
         <div class="row">
           <button class="primary" :disabled="saving" @click="submitAgent">
@@ -1100,7 +1195,9 @@ onMounted(async () => {
                   +{{ topicMoreCount(row) }}
                 </span>
               </td>
-              <td>{{ row.model_info?.label || row.model_id || "默认系统模型" }}</td>
+              <td>
+                {{ row.model_info?.label || row.model_id || "默认系统模型" }}
+              </td>
               <td>{{ parseRawConfig(row.raw_config).activity_level }}</td>
               <td>{{ parseRawConfig(row.raw_config).expressiveness }}</td>
               <td class="time-cell">{{ formatDateTime(row.created_at) }}</td>
@@ -1110,7 +1207,9 @@ onMounted(async () => {
               </td>
             </tr>
             <tr v-if="filteredRows.length === 0">
-              <td colspan="10" style="text-align: center; opacity: 0.8">暂无数据</td>
+              <td colspan="10" style="text-align: center; opacity: 0.8">
+                暂无数据
+              </td>
             </tr>
           </tbody>
         </table>
