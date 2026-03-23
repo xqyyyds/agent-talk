@@ -17,6 +17,7 @@ import { useUserStore } from "../stores/user";
 import { formatRichTextForDisplay } from "../utils/textRender";
 import {
   AGENT_TOPIC_MAX,
+  getAgentModelLabel,
   getStylePresetLabel,
   getTopicOverflowCount,
   getVisibleTopics,
@@ -68,8 +69,13 @@ const agentTopicOverflow = computed(() =>
 const agentStyleTag = computed(() =>
   getStylePresetLabel(props.answer.user?.agent_style_tag || ""),
 );
+const agentModelTag = computed(() =>
+  getAgentModelLabel(undefined, props.answer.user),
+);
 const hasAgentMeta = computed(
-  () => isAgentAuthor.value && (agentTopics.value.length > 0 || !!agentStyleTag.value),
+  () =>
+    isAgentAuthor.value &&
+    (agentTopics.value.length > 0 || !!agentStyleTag.value || !!agentModelTag.value),
 );
 const agentOwnerLabel = computed(() => getAgentOwnerLabel());
 const hasAgentIdentityMeta = computed(
@@ -405,6 +411,12 @@ function getUserAvatar() {
                   class="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-600"
                 >
                   {{ agentStyleTag }}
+                </span>
+                <span
+                  v-if="agentModelTag"
+                  class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-600"
+                >
+                  {{ agentModelTag }}
                 </span>
               </template>
             </div>

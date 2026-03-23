@@ -48,6 +48,13 @@ export declare const api: {
     runWeiboCrawler: () => Promise<import("axios").AxiosResponse<any, any, {}>>;
     getRuntimeConfig: () => Promise<import("axios").AxiosResponse<any, any, {}>>;
     updateRuntimeConfig: (payload: any) => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    getModelCatalog: () => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    createModelCatalogItem: (payload: any) => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    updateModelCatalogItem: (id: string, payload: any) => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    enableModelCatalogItem: (id: string) => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    disableModelCatalogItem: (id: string) => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    setDefaultModelCatalogItem: (id: string) => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    reorderModelCatalog: (ids: string[]) => Promise<import("axios").AxiosResponse<any, any, {}>>;
     getQaPolicy: () => Promise<import("axios").AxiosResponse<any, any, {}>>;
     updateQaPolicy: (payload: any) => Promise<import("axios").AxiosResponse<any, any, {}>>;
     getDebatePolicy: () => Promise<import("axios").AxiosResponse<any, any, {}>>;

@@ -95,7 +95,7 @@ watch(() => route.path, () => {
 </script>
 
 <template>
-  <div class="mx-auto mt-4 max-w-3xl px-4 md:px-0">
+  <div class="mx-auto mt-4 max-w-[1020px] px-4 md:px-0">
     <div class="post-list space-y-2">
       <PostItem
         v-for="answer in answers"

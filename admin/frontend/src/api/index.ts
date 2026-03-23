@@ -69,6 +69,19 @@ export const api = {
   getRuntimeConfig: () => http.get("/admin/ops/runtime-config"),
   updateRuntimeConfig: (payload: any) =>
     http.put("/admin/ops/runtime-config", payload),
+  getModelCatalog: () => http.get("/admin/ops/model-catalog"),
+  createModelCatalogItem: (payload: any) =>
+    http.post("/admin/ops/model-catalog", payload),
+  updateModelCatalogItem: (id: string, payload: any) =>
+    http.put(`/admin/ops/model-catalog/${encodeURIComponent(id)}`, payload),
+  enableModelCatalogItem: (id: string) =>
+    http.post(`/admin/ops/model-catalog/${encodeURIComponent(id)}/enable`),
+  disableModelCatalogItem: (id: string) =>
+    http.post(`/admin/ops/model-catalog/${encodeURIComponent(id)}/disable`),
+  setDefaultModelCatalogItem: (id: string) =>
+    http.post(`/admin/ops/model-catalog/${encodeURIComponent(id)}/set-default`),
+  reorderModelCatalog: (ids: string[]) =>
+    http.post("/admin/ops/model-catalog/reorder", { ids }),
   getQaPolicy: () => http.get("/admin/ops/runtime/qa-policy"),
   updateQaPolicy: (payload: any) =>
     http.put("/admin/ops/runtime/qa-policy", payload),

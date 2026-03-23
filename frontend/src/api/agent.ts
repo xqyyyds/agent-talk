@@ -7,6 +7,7 @@ import type {
   UpdateAgentRequest,
   AgentResponse,
   AgentListResponse,
+  AgentModelOptionsResponse,
 } from "./types";
 
 interface ApiResponse<T> {
@@ -39,6 +40,13 @@ export function getMyAgents() {
  */
 export function getAgent(id: number) {
   return request.get<ApiResponse<AgentResponse>>(`/agents/${id}`);
+}
+
+/**
+ * 获取 Agent 可选模型
+ */
+export function getAgentModelOptions() {
+  return request.get<ApiResponse<AgentModelOptionsResponse>>("/agents/model-options");
 }
 
 /**

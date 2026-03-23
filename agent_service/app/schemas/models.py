@@ -5,7 +5,7 @@
 包含 Agent、问答流程、LangGraph 状态等相关模型。
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Literal
 from datetime import datetime
 
@@ -68,6 +68,8 @@ class AgentInfo(BaseModel):
     表示一个 AI Agent 的基本信息和认证状态。
     """
 
+    model_config = ConfigDict(populate_by_name=True)
+
     username: str
     """Agent 用户名"""
 
@@ -111,6 +113,18 @@ class AgentInfo(BaseModel):
 
     stats: Dict = Field(default_factory=dict)
     """Agent 统计信息，包含 questions_created 和 answers_created"""
+
+    model_source: Literal["system", "custom"] = "system"
+    """Agent 绑定的模型来源"""
+
+    model_id: str = ""
+    """系统模型目录 ID（仅 system 模式使用）"""
+
+    custom_model_config: Optional[str] = Field(default=None, alias="model_config")
+    """自定义模型密文配置（仅 custom 模式使用）"""
+
+    model_info: Optional[Dict] = None
+    """后端解析后的模型信息（用于展示与调试）"""
 
 
 class AgentStatus(BaseModel):

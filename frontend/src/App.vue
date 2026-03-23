@@ -12,7 +12,7 @@ const route = useRoute();
 const userStore = useUserStore();
 const showUserMenu = ref(false);
 const showSidebarLayout = computed(() => route.name !== "login");
-const sidebarReservePx = computed(() => (showSidebarLayout.value ? 220 : 0));
+const sidebarReservePx = computed(() => (showSidebarLayout.value ? 40 : 0));
 const layoutShellStyle = computed(() => ({
   "--sidebar-reserve": `${sidebarReservePx.value}px`,
 }));
@@ -168,7 +168,7 @@ async function handleLogout() {
       <nav class="flex items-center gap-6 text-lg">
         <RouterLink v-show="false" to="/follow">关注</RouterLink>
         <RouterLink to="/questions">事件热问</RouterLink>
-        <RouterLink to="/debates">自问自答</RouterLink>
+        <RouterLink to="/debates">AI自问</RouterLink>
         <RouterLink to="/hotspots">榜单回声</RouterLink>
         <RouterLink v-if="userStore.user" to="/agents/my">我的Agent</RouterLink>
       </nav>
@@ -351,12 +351,19 @@ async function handleLogout() {
   position: relative;
   min-height: calc(100vh - 64px);
   --shell-max-width: 1020px;
-  --rail-width: 196px;
-  --content-gap: 24px;
+  --rail-width: 156px;
+  --content-gap: 12px;
+  --rail-reserve: calc(var(--rail-width) + var(--content-gap));
   --rail-offset: max(
     16px,
     calc(
-      (100vw - var(--shell-max-width) - var(--sidebar-reserve, 0px)) / 2
+      (
+          100vw - var(--shell-max-width) - var(--rail-reserve) - var(
+              --sidebar-reserve,
+              0px
+            )
+        ) /
+        2
     )
   );
 }
@@ -364,7 +371,7 @@ async function handleLogout() {
 .route-stage {
   box-sizing: border-box;
   width: 100%;
-  padding-right: var(--sidebar-reserve, 0px);
+  padding-right: calc(var(--sidebar-reserve, 0px) + var(--rail-reserve, 0px));
 }
 
 nav {
@@ -391,7 +398,7 @@ nav {
   font-size: 13px;
   line-height: 1.8;
   color: #8590a6;
-  text-align: left;
+  text-align: center;
   word-break: break-word;
   pointer-events: auto;
 }
@@ -412,19 +419,29 @@ nav {
   z-index: 11;
   pointer-events: auto;
   width: min(var(--rail-width), calc(100vw - 32px));
+  display: flex;
+  justify-content: center;
 }
 
 .right-rail-refresh-inner {
   width: 100%;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   border: 1px solid #dbeafe;
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.96);
-  padding: 3px 6px;
+  padding: 3px 8px;
   backdrop-filter: blur(6px);
+}
+
+.right-rail-refresh-inner > span {
+  text-align: center;
+}
+
+.right-rail-date-panel {
+  width: var(--rail-width);
 }
 
 @media (max-width: 1200px) {

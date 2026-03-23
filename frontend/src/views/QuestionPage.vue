@@ -46,9 +46,9 @@ const hotspotMetaFallback = ref<{
   url: string;
 } | null>(null);
 
-const sortMode = ref<"time" | "hot">("time");
+const sortMode = ref<"desc" | "asc" | "hot">("desc");
 const showSortDropdown = ref(false);
-const hoverSortMode = ref<"time" | "hot" | null>(null);
+const hoverSortMode = ref<"desc" | "asc" | "hot" | null>(null);
 const lastRefreshedAt = ref<Date | null>(null);
 const pendingAnswerCount = ref(0);
 const isAnswerDetailMode = computed(() => !!route.params.answerId);
@@ -186,14 +186,19 @@ const sortedAnswers = computed(() => {
       return getCreatedAtMs(b) - getCreatedAtMs(a);
     });
   }
+  if (sortMode.value === "asc") {
+    return list.sort((a, b) => getCreatedAtMs(a) - getCreatedAtMs(b));
+  }
   return list.sort((a, b) => getCreatedAtMs(b) - getCreatedAtMs(a));
 });
 
-const sortText = computed(() =>
-  sortMode.value === "time" ? "按时间排序" : "按热度排序",
-);
+const sortText = computed(() => {
+  if (sortMode.value === "asc") return "正序";
+  if (sortMode.value === "hot") return "按热度";
+  return "倒序";
+});
 
-function selectSort(mode: "time" | "hot") {
+function selectSort(mode: "desc" | "asc" | "hot") {
   sortMode.value = mode;
   hoverSortMode.value = null;
   showSortDropdown.value = false;
@@ -634,43 +639,58 @@ watch(
                 </span>
               </button>
 
-              <div
-                v-if="showSortDropdown"
-                class="absolute right-0 top-full z-10 mt-2 w-[128px] overflow-hidden rounded-lg border border-[#EBEEF5] bg-white shadow-[0_5px_20px_rgba(18,18,18,0.1)]"
-              >
                 <div
-                  class="cursor-pointer px-4 py-2.5 text-center text-[14px] text-[#8590A6] transition-colors hover:bg-[#F6F6F6]"
-                  :class="
-                    hoverSortMode === 'hot' ||
-                    (!hoverSortMode && sortMode === 'hot')
+                  v-if="showSortDropdown"
+                  class="absolute right-0 top-full z-10 mt-2 w-[128px] overflow-hidden rounded-lg border border-[#EBEEF5] bg-white shadow-[0_5px_20px_rgba(18,18,18,0.1)]"
+                >
+                  <div
+                    class="cursor-pointer px-4 py-2.5 text-center text-[14px] text-[#8590A6] transition-colors hover:bg-[#F6F6F6]"
+                    :class="
+                      hoverSortMode === 'desc' ||
+                      (!hoverSortMode && sortMode === 'desc')
+                        ? 'bg-[#F6F6F6]'
+                        : ''
+                    "
+                    style="text-shadow: none"
+                    @mouseenter="hoverSortMode = 'desc'"
+                    @mouseleave="hoverSortMode = null"
+                    @click="selectSort('desc')"
+                  >
+                    倒序
+                  </div>
+                  <div
+                    class="cursor-pointer px-4 py-2.5 text-center text-[14px] text-[#8590A6] transition-colors hover:bg-[#F6F6F6]"
+                    :class="
+                      hoverSortMode === 'asc' ||
+                      (!hoverSortMode && sortMode === 'asc')
+                        ? 'bg-[#F6F6F6]'
+                        : ''
+                    "
+                    style="text-shadow: none"
+                    @mouseenter="hoverSortMode = 'asc'"
+                    @mouseleave="hoverSortMode = null"
+                    @click="selectSort('asc')"
+                  >
+                    正序
+                  </div>
+                  <div
+                    class="cursor-pointer px-4 py-2.5 text-center text-[14px] text-[#8590A6] transition-colors hover:bg-[#F6F6F6]"
+                    :class="
+                      hoverSortMode === 'hot' ||
+                      (!hoverSortMode && sortMode === 'hot')
                       ? 'bg-[#F6F6F6]'
                       : ''
                   "
-                  style="text-shadow: none"
-                  @mouseenter="hoverSortMode = 'hot'"
-                  @mouseleave="hoverSortMode = null"
-                  @click="selectSort('hot')"
-                >
-                  按热度排序
-                </div>
-                <div
-                  class="cursor-pointer px-4 py-2.5 text-center text-[14px] text-[#8590A6] transition-colors hover:bg-[#F6F6F6]"
-                  :class="
-                    hoverSortMode === 'time' ||
-                    (!hoverSortMode && sortMode === 'time')
-                      ? 'bg-[#F6F6F6]'
-                      : ''
-                  "
-                  style="text-shadow: none"
-                  @mouseenter="hoverSortMode = 'time'"
-                  @mouseleave="hoverSortMode = null"
-                  @click="selectSort('time')"
-                >
-                  按时间排序
+                    style="text-shadow: none"
+                    @mouseenter="hoverSortMode = 'hot'"
+                    @mouseleave="hoverSortMode = null"
+                    @click="selectSort('hot')"
+                  >
+                    按热度
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
           <div
             v-for="answer in sortedAnswers"

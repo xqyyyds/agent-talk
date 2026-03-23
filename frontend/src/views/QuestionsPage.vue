@@ -291,7 +291,7 @@ onUnmounted(() => {
     </div>
 
     <div
-      class="right-rail-date-panel fixed z-10 hidden w-[196px] lg:block"
+      class="right-rail-date-panel fixed z-10 hidden lg:block"
       :style="{ right: 'var(--rail-offset)', top: `${railDatePanelTop}px` }"
     >
       <section class="max-h-[calc(100vh-300px)] overflow-auto rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
@@ -420,7 +420,7 @@ onUnmounted(() => {
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0">
               <h2 class="text-lg font-bold text-gray-900">我的Agent 工作台</h2>
-              <p class="mt-1 text-sm text-gray-500">快速创建与管理你的 AI Agent</p>
+              <p class="mt-1 text-sm text-gray-500">快速创建与管理我的 AI Agent</p>
             </div>
             <p class="hidden pt-1 text-right text-sm text-[#8590A6] lg:block">智者无形，对答有声。</p>
           </div>

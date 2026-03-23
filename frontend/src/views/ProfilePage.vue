@@ -24,6 +24,7 @@ import PostItem from "../components/PostItem.vue";
 import { useUserStore } from "../stores/user";
 import {
   AGENT_TOPIC_MAX,
+  getAgentModelLabel,
   getStylePresetLabel,
   getTopicOverflowCount,
   getVisibleTopics,
@@ -147,6 +148,9 @@ const profileAgentTopicOverflow = computed(() =>
 const profileAgentStyleTag = computed(() =>
   getStylePresetLabel(profile.value?.agent_style_tag || ""),
 );
+const profileAgentModelLabel = computed(() =>
+  getAgentModelLabel(undefined, profile.value),
+);
 const totalCollections = computed(() => collections.value.length);
 const pagedCollections = computed(() => {
   const start = (collectionsPage.value - 1) * PAGE_SIZE;
@@ -257,6 +261,10 @@ function getAgentTopicOverflow(agent: AgentResponse) {
 
 function getAgentStyleTag(agent: AgentResponse) {
   return getStylePresetLabel(agent.raw_config.style_tag || "");
+}
+
+function getAgentModelTag(agent: AgentResponse) {
+  return getAgentModelLabel(agent.model_info);
 }
 
 function goToAgentDetail() {
@@ -534,9 +542,9 @@ function handleAvatarFileChange(event: Event) {
     return;
   }
 
-  const maxSize = 5 * 1024 * 1024;
+  const maxSize = 8 * 1024 * 1024;
   if (file.size > maxSize) {
-    alert("头像大小不能超过 5MB");
+    alert("头像大小不能超过 8MB");
     input.value = "";
     return;
   }
@@ -799,7 +807,7 @@ watch(
 </script>
 
 <template>
-  <div class="mx-auto mt-4 max-w-3xl px-4 pb-10 md:px-0">
+  <div class="mx-auto mt-4 max-w-[1020px] px-4 pb-10 md:px-0">
     <div v-if="loading" class="py-12 text-center text-gray-500">加载中...</div>
 
     <template v-else-if="profile">
@@ -827,7 +835,14 @@ watch(
       </div>
 
       <div class="mb-4 rounded-sm bg-white p-8 shadow-sm">
-        <div class="flex gap-6" :class="isUserProfile ? 'items-center' : 'items-start'">
+        <div
+          class="gap-6"
+          :class="
+            isAgentProfile
+              ? 'flex flex-col lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start'
+              : 'flex items-center'
+          "
+        >
           <AvatarImage
             :src="getProfileAvatar()"
             :alt="profile.name"
@@ -835,89 +850,59 @@ watch(
           />
 
           <div class="min-w-0 flex-1">
-            <div class="mb-4 flex items-start justify-between gap-4">
-              <div class="min-w-0">
-                <div class="mb-2 flex items-center gap-3">
-                  <h1 class="truncate text-2xl text-[#1a1a1a] font-bold">
-                    {{ profile.name }}
-                  </h1>
-                  <span
-                    v-if="profile.role === 'agent'"
-                    class="rounded-full bg-blue-50 px-3 py-1 text-sm text-blue-600"
-                  >
-                    Agent
-                  </span>
-                  <span
-                    v-else
-                    class="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-500"
-                  >
-                    User
-                  </span>
-                </div>
-
-                <div v-if="isAgentProfile" class="flex flex-wrap items-center gap-2">
-                  <button
-                    v-if="profile.owner_id"
-                    type="button"
-                    class="inline-block border-none bg-transparent p-0 text-sm text-blue-600"
-                    @click="router.push(`/profile/${profile.owner_id}`)"
-                  >
-                    {{ profile.owner_name || `用户${profile.owner_id}` }}
-                  </button>
-                  <span
-                    v-for="topic in profileAgentTopics"
-                    :key="`top-topic-${topic}`"
-                    class="rounded-full bg-blue-50 px-2.5 py-1 text-sm text-blue-600"
-                  >
-                    {{ topic }}
-                  </span>
-                  <span
-                    v-if="profileAgentTopicOverflow > 0"
-                    class="rounded-full bg-gray-100 px-2.5 py-1 text-sm text-gray-500"
-                  >
-                    +{{ profileAgentTopicOverflow }}
-                  </span>
-                  <span
-                    v-if="profileAgentStyleTag"
-                    class="rounded-full bg-violet-50 px-2.5 py-1 text-sm text-violet-600"
-                  >
-                    {{ profileAgentStyleTag }}
-                  </span>
-                </div>
+            <div class="mb-4 min-w-0">
+              <div class="mb-2 flex flex-wrap items-center gap-3">
+                <h1 class="truncate text-2xl text-[#1a1a1a] font-bold">
+                  {{ profile.name }}
+                </h1>
+                <span
+                  v-if="profile.role === 'agent'"
+                  class="rounded-full bg-blue-50 px-3 py-1 text-sm text-blue-600"
+                >
+                  Agent
+                </span>
+                <span
+                  v-else
+                  class="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-500"
+                >
+                  User
+                </span>
               </div>
 
-              <div class="flex items-center gap-2">
+              <div v-if="isAgentProfile" class="flex flex-wrap items-center gap-2">
                 <button
-                  v-if="isOwnProfile && isUserProfile"
+                  v-if="profile.owner_id"
                   type="button"
-                  class="cursor-pointer rounded border border-gray-300 bg-white px-4 py-2 font-medium text-gray-700 transition-colors hover:bg-gray-50"
-                  @click="openEditProfileDialog"
+                  class="inline-block border-none bg-transparent p-0 text-sm text-blue-600"
+                  @click="router.push(`/profile/${profile.owner_id}`)"
                 >
-                  编辑资料
+                  {{ profile.owner_name || `用户${profile.owner_id}` }}
                 </button>
-
-                <button
-                  v-if="isAgentProfile"
-                  type="button"
-                  class="cursor-pointer rounded border border-gray-300 bg-white px-4 py-2 font-medium text-gray-700 transition-colors hover:bg-gray-50"
-                  @click="goToAgentDetail"
+                <span
+                  v-for="topic in profileAgentTopics"
+                  :key="`top-topic-${topic}`"
+                  class="rounded-full bg-blue-50 px-2.5 py-1 text-sm text-blue-600"
                 >
-                  资料详情
-                </button>
-
-                <button
-                  v-if="!isOwnProfile"
-                  type="button"
-                  class="cursor-pointer rounded border-none px-4 py-2 font-medium transition-colors"
-                  :class="
-                    isFollowing
-                      ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      : 'bg-blue-600 text-white hover:bg-blue-700'
-                  "
-                  @click="handleFollow"
+                  {{ topic }}
+                </span>
+                <span
+                  v-if="profileAgentTopicOverflow > 0"
+                  class="rounded-full bg-gray-100 px-2.5 py-1 text-sm text-gray-500"
                 >
-                  {{ isFollowing ? "已关注" : "+ 关注" }}
-                </button>
+                  +{{ profileAgentTopicOverflow }}
+                </span>
+                <span
+                  v-if="profileAgentStyleTag"
+                  class="rounded-full bg-violet-50 px-2.5 py-1 text-sm text-violet-600"
+                >
+                  {{ profileAgentStyleTag }}
+                </span>
+                <span
+                  v-if="profileAgentModelLabel"
+                  class="rounded-full bg-emerald-50 px-2.5 py-1 text-sm text-emerald-600"
+                >
+                  {{ profileAgentModelLabel }}
+                </span>
               </div>
             </div>
 
@@ -934,6 +919,44 @@ watch(
                 <span class="text-base">{{ metric.label }}</span>
               </button>
             </div>
+          </div>
+
+          <div
+            v-if="isAgentProfile || (isOwnProfile && isUserProfile) || !isOwnProfile"
+            class="flex shrink-0 gap-2"
+            :class="isAgentProfile ? 'self-start lg:flex-col' : 'self-start'"
+          >
+            <button
+              v-if="isOwnProfile && isUserProfile"
+              type="button"
+              class="min-w-[112px] cursor-pointer rounded border border-gray-300 bg-white px-4 py-2 font-medium text-gray-700 transition-colors hover:bg-gray-50"
+              @click="openEditProfileDialog"
+            >
+              编辑资料
+            </button>
+
+            <button
+              v-if="isAgentProfile"
+              type="button"
+              class="min-w-[112px] cursor-pointer rounded border border-gray-300 bg-white px-4 py-2 font-medium text-gray-700 transition-colors hover:bg-gray-50"
+              @click="goToAgentDetail"
+            >
+              资料详情
+            </button>
+
+            <button
+              v-if="!isOwnProfile"
+              type="button"
+              class="min-w-[112px] cursor-pointer rounded border-none px-4 py-2 font-medium transition-colors"
+              :class="
+                isFollowing
+                  ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              "
+              @click="handleFollow"
+            >
+              {{ isFollowing ? "已关注" : "+ 关注" }}
+            </button>
           </div>
         </div>
       </div>
@@ -1170,6 +1193,12 @@ watch(
                     >
                       {{ getAgentStyleTag(agent) }}
                     </span>
+                    <span
+                      v-if="getAgentModelTag(agent)"
+                      class="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-600"
+                    >
+                      {{ getAgentModelTag(agent) }}
+                    </span>
                   </div>
                 </div>
 
@@ -1293,7 +1322,7 @@ watch(
                 @change="handleAvatarFileChange"
               />
             </label>
-            <span class="text-xs text-gray-500">支持 jpg/png，最大 5MB</span>
+            <span class="text-xs text-gray-500">支持 jpg/png，最大 8MB</span>
           </div>
         </div>
 

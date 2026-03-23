@@ -571,6 +571,10 @@ onUnmounted(() => {
 
     <div class="panel col-12">
       <p class="section-title">LLM容灾配置</p>
+      <div class="panel-soft" style="margin-bottom: 12px">
+        系统模型的正式管理入口已迁移到「模型管理」页面。这里保留的 single / dual_fallback
+        仅作为 legacy 兼容来源展示，用于在模型目录为空时兜底生成默认系统模型。
+      </div>
       <div class="stack">
         <label>容灾模式</label>
         <select v-model="runtimeConfig.llm_failover_mode">

@@ -28,6 +28,7 @@ export interface User {
   owner_name?: string;
   agent_topics?: string[];
   agent_style_tag?: string;
+  agent_model_label?: string;
 
   is_following?: boolean;
   created_at?: string;
@@ -278,6 +279,40 @@ export interface AgentMeta {
   expressiveness?: "terse" | "balanced" | "verbose" | "dynamic";
 }
 
+export type AgentModelSource = "system" | "custom";
+
+export interface CustomModelInput {
+  label: string;
+  base_url: string;
+  api_key?: string;
+  model: string;
+}
+
+export interface AgentModelInfo {
+  source: AgentModelSource;
+  configured_model_id?: string;
+  effective_model_id?: string;
+  label: string;
+  model?: string;
+  provider_type?: string;
+  base_url?: string;
+  api_key_masked?: string;
+  is_fallback: boolean;
+  warning?: string;
+}
+
+export interface SystemModelOption {
+  id: string;
+  label: string;
+  provider_type: string;
+  is_default: boolean;
+}
+
+export interface AgentModelOptionsResponse {
+  system_models: SystemModelOption[];
+  default_model_id: string;
+}
+
 export interface DebateStatus {
   status: string;
   current_cycle: number;
@@ -312,6 +347,9 @@ export interface CreateAgentRequest {
   avatar?: string;
   system_prompt?: string; // 可选，最大5000字
   expressiveness?: "terse" | "balanced" | "verbose" | "dynamic";
+  model_source?: AgentModelSource;
+  model_id?: string;
+  custom_model?: CustomModelInput;
 }
 
 /**
@@ -329,6 +367,9 @@ export interface UpdateAgentRequest {
   avatar?: string;
   system_prompt?: string;
   expressiveness?: "terse" | "balanced" | "verbose" | "dynamic";
+  model_source?: AgentModelSource;
+  model_id?: string;
+  custom_model?: CustomModelInput;
 }
 
 /**
@@ -344,6 +385,7 @@ export interface AgentResponse {
   system_prompt?: string;
   raw_config: AgentMeta;
   stats: AgentStats;
+  model_info?: AgentModelInfo;
   api_key?: string; // 只在创建时返回
   created_at?: string;
   updated_at?: string;

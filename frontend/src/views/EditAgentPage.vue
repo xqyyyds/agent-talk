@@ -2,10 +2,16 @@
 import { onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useToast } from "vue-toastification";
-import { getAgent, updateAgent } from "@/api/agent";
+import { getAgent, getAgentModelOptions, updateAgent } from "@/api/agent";
 import { optimizeAgentPrompt, playgroundChat } from "@/api/agent_python";
 import AvatarImage from "@/components/AvatarImage.vue";
-import type { AgentResponse, OptimizeAgentRequest, UpdateAgentRequest } from "@/api/types";
+import type {
+  AgentModelSource,
+  AgentResponse,
+  OptimizeAgentRequest,
+  SystemModelOption,
+  UpdateAgentRequest,
+} from "@/api/types";
 
 const route = useRoute();
 const router = useRouter();
@@ -27,7 +33,20 @@ const formData = ref<UpdateAgentRequest>({
   expressiveness: "balanced",
   system_prompt: "",
   avatar: undefined,
+  model_source: "system",
+  model_id: "",
+  custom_model: {
+    label: "",
+    base_url: "",
+    api_key: "",
+    model: "",
+  },
 });
+
+const modelOptions = ref<SystemModelOption[]>([]);
+const loadingModelOptions = ref(false);
+const modelOptionsError = ref("");
+const customModelKeyMasked = ref("");
 
 const optimizedPrompt = ref("");
 const isOptimizing = ref(false);
@@ -261,7 +280,104 @@ function validateForm(): boolean {
     errors.value.bias = "请选择立场观点";
   }
 
+  const modelSource = formData.value.model_source || "system";
+  if (modelSource === "system") {
+    if (!formData.value.model_id?.trim()) {
+      errors.value.model = "请选择系统模型";
+    }
+  } else {
+    const customModel = formData.value.custom_model;
+    if (!customModel?.label?.trim()) {
+      errors.value.custom_model_label = "请输入模型别名";
+    }
+    if (!customModel?.base_url?.trim()) {
+      errors.value.custom_model_base_url = "请输入 Base URL";
+    }
+    if (!customModel?.model?.trim()) {
+      errors.value.custom_model_name = "请输入模型名称";
+    }
+  }
+
   return Object.keys(errors.value).length === 0;
+}
+
+function ensureDefaultModelSelection() {
+  if ((formData.value.model_source || "system") !== "system") return;
+  if (formData.value.model_id) return;
+  const defaultOption =
+    modelOptions.value.find((item) => item.is_default) || modelOptions.value[0];
+  formData.value.model_id = defaultOption?.id || "";
+}
+
+function setModelSource(source: AgentModelSource) {
+  formData.value.model_source = source;
+  if (source === "system") {
+    ensureDefaultModelSelection();
+  }
+}
+
+async function loadModelOptions() {
+  loadingModelOptions.value = true;
+  modelOptionsError.value = "";
+  try {
+    const response = await getAgentModelOptions();
+    if (!(response.data.code === 200 && response.data.data)) {
+      throw new Error(response.data.message || "模型列表加载失败");
+    }
+    modelOptions.value = response.data.data.system_models || [];
+    if ((formData.value.model_source || "system") === "system") {
+      if (!formData.value.model_id) {
+        formData.value.model_id =
+          response.data.data.default_model_id ||
+          modelOptions.value.find((item) => item.is_default)?.id ||
+          modelOptions.value[0]?.id ||
+          "";
+      } else if (!modelOptions.value.some((item) => item.id === formData.value.model_id)) {
+        formData.value.model_id =
+          response.data.data.default_model_id ||
+          modelOptions.value.find((item) => item.is_default)?.id ||
+          modelOptions.value[0]?.id ||
+          "";
+      }
+    }
+  } catch (error: any) {
+    console.error("加载模型选项失败:", error);
+    modelOptionsError.value = error?.message || "模型列表加载失败";
+  } finally {
+    loadingModelOptions.value = false;
+  }
+}
+
+function buildUpdatePayload(): UpdateAgentRequest {
+  const payload: UpdateAgentRequest = {
+    name: formData.value.name,
+    headline: formData.value.headline,
+    bio: formData.value.bio,
+    topics: formData.value.topics,
+    bias: formData.value.bias,
+    style_tag: formData.value.style_tag,
+    reply_mode: formData.value.reply_mode,
+    activity_level: formData.value.activity_level,
+    expressiveness: formData.value.expressiveness,
+    system_prompt: formData.value.system_prompt,
+    avatar: formData.value.avatar,
+    model_source: formData.value.model_source || "system",
+  };
+
+  if (payload.model_source === "system") {
+    payload.model_id = formData.value.model_id || "";
+    delete payload.custom_model;
+  } else {
+    payload.custom_model = {
+      label: formData.value.custom_model?.label?.trim() || "",
+      base_url: formData.value.custom_model?.base_url?.trim() || "",
+      api_key: formData.value.custom_model?.api_key?.trim() || "",
+      model: formData.value.custom_model?.model?.trim() || "",
+    };
+    delete payload.model_id;
+  }
+
+  return payload;
 }
 
 async function loadAgentDetail() {
@@ -287,9 +403,30 @@ async function loadAgentDetail() {
       expressiveness: raw.expressiveness || "balanced",
       system_prompt: agent.value.system_prompt || "",
       avatar: agent.value.avatar || "",
+      model_source: agent.value.model_info?.source || "system",
+      model_id:
+        agent.value.model_info?.configured_model_id ||
+        agent.value.model_info?.effective_model_id ||
+        "",
+      custom_model:
+        agent.value.model_info?.source === "custom"
+          ? {
+              label: agent.value.model_info?.label || "",
+              base_url: agent.value.model_info?.base_url || "",
+              api_key: "",
+              model: agent.value.model_info?.model || "",
+            }
+          : {
+              label: "",
+              base_url: "",
+              api_key: "",
+              model: "",
+            },
     };
 
     avatarPreview.value = agent.value.avatar || "";
+    customModelKeyMasked.value = agent.value.model_info?.api_key_masked || "";
+    await loadModelOptions();
   } catch (error: any) {
     toast.error(`加载失败：${error?.message || "未知错误"}`);
     router.push("/agents/my");
@@ -399,19 +536,7 @@ async function handleSave() {
 
   isSaving.value = true;
   try {
-    const response = await updateAgent(agentId, {
-      name: formData.value.name,
-      headline: formData.value.headline,
-      bio: formData.value.bio,
-      topics: formData.value.topics,
-      bias: formData.value.bias,
-      style_tag: formData.value.style_tag,
-      reply_mode: formData.value.reply_mode,
-      activity_level: formData.value.activity_level,
-      expressiveness: formData.value.expressiveness,
-      system_prompt: formData.value.system_prompt,
-      avatar: formData.value.avatar,
-    });
+    const response = await updateAgent(agentId, buildUpdatePayload());
 
     if (response.data.code === 200) {
       toast.success("保存成功，当前页已保持，您可以继续测试");
@@ -677,6 +802,183 @@ onMounted(async () => {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div class="mb-8">
+            <label class="mb-2 block text-sm font-semibold text-gray-700">
+              使用模型 <span class="text-red-500">*</span>
+            </label>
+            <p class="mb-3 text-sm text-gray-500">
+              可切换当前 Agent 使用的平台系统模型，或配置专属的 OpenAI 兼容模型
+            </p>
+
+            <div class="mb-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                class="rounded-xl border px-4 py-2 text-sm font-medium transition"
+                :class="
+                  (formData.model_source || 'system') === 'system'
+                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                "
+                @click="setModelSource('system')"
+              >
+                系统模型
+              </button>
+              <button
+                type="button"
+                class="rounded-xl border px-4 py-2 text-sm font-medium transition"
+                :class="
+                  (formData.model_source || 'system') === 'custom'
+                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                "
+                @click="setModelSource('custom')"
+              >
+                自定义 OpenAI 兼容模型
+              </button>
+              <button
+                type="button"
+                class="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="loadingModelOptions"
+                @click="loadModelOptions"
+              >
+                {{ loadingModelOptions ? "刷新中..." : "刷新模型列表" }}
+              </button>
+            </div>
+
+            <p v-if="errors.model" class="mb-2 text-sm text-red-500">{{ errors.model }}</p>
+            <p v-if="modelOptionsError" class="mb-3 text-sm text-red-500">{{ modelOptionsError }}</p>
+
+            <div
+              v-if="(formData.model_source || 'system') === 'system'"
+              class="rounded-2xl border border-gray-200 bg-gray-50 p-4"
+            >
+              <div v-if="loadingModelOptions" class="py-6 text-center text-sm text-gray-500">
+                正在加载系统模型...
+              </div>
+              <div v-else-if="modelOptions.length === 0" class="py-4 text-sm text-gray-500">
+                当前没有可选系统模型，请先在后台配置模型目录。
+              </div>
+              <div v-else class="space-y-2">
+                <label
+                  v-for="option in modelOptions"
+                  :key="option.id"
+                  class="flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 transition"
+                  :class="
+                    formData.model_id === option.id
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  "
+                >
+                  <div>
+                    <div class="font-medium text-gray-900">{{ option.label }}</div>
+                    <div class="mt-0.5 text-xs text-gray-500">
+                      {{ option.provider_type }}
+                      <span v-if="option.is_default" class="ml-2 text-blue-600">默认模型</span>
+                    </div>
+                  </div>
+                  <input
+                    v-model="formData.model_id"
+                    type="radio"
+                    name="agent-edit-system-model"
+                    :value="option.id"
+                    class="h-4 w-4"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div
+              v-else
+              class="grid gap-4 rounded-2xl border border-gray-200 bg-gray-50 p-4 md:grid-cols-2"
+            >
+              <input
+                type="text"
+                name="agent-model-fake-username"
+                autocomplete="username"
+                tabindex="-1"
+                class="hidden"
+              />
+              <input
+                type="password"
+                name="agent-model-fake-password"
+                autocomplete="current-password"
+                tabindex="-1"
+                class="hidden"
+              />
+              <div class="md:col-span-2">
+                <label class="mb-2 block text-sm font-medium text-gray-700">模型别名</label>
+                <input
+                  v-model="formData.custom_model!.label"
+                  type="text"
+                  name="agent-custom-model-label"
+                  autocomplete="off"
+                  autocapitalize="off"
+                  spellcheck="false"
+                  placeholder="例如：我的 DeepSeek / 私有 GPT"
+                  class="w-full rounded-xl border border-gray-300 px-4 py-3 transition focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                />
+                <p v-if="errors.custom_model_label" class="mt-1 text-sm text-red-500">
+                  {{ errors.custom_model_label }}
+                </p>
+              </div>
+
+              <div class="md:col-span-2">
+                <label class="mb-2 block text-sm font-medium text-gray-700">Base URL</label>
+                <input
+                  v-model="formData.custom_model!.base_url"
+                  type="text"
+                  name="agent-custom-base-url"
+                  autocomplete="off"
+                  autocapitalize="off"
+                  spellcheck="false"
+                  placeholder="例如：https://api.openai.com/v1"
+                  class="w-full rounded-xl border border-gray-300 px-4 py-3 transition focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                />
+                <p v-if="errors.custom_model_base_url" class="mt-1 text-sm text-red-500">
+                  {{ errors.custom_model_base_url }}
+                </p>
+              </div>
+
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700">API Key</label>
+                <input
+                  v-model="formData.custom_model!.api_key"
+                  type="password"
+                  name="agent-custom-api-key"
+                  autocomplete="new-password"
+                  autocapitalize="off"
+                  spellcheck="false"
+                  placeholder="留空表示沿用当前 Key"
+                  class="w-full rounded-xl border border-gray-300 px-4 py-3 transition focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                />
+                <p v-if="customModelKeyMasked" class="mt-1 text-xs text-gray-500">
+                  当前已保存：{{ customModelKeyMasked }}
+                </p>
+              </div>
+
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700">模型名称</label>
+                <input
+                  v-model="formData.custom_model!.model"
+                  type="text"
+                  name="agent-custom-model-name"
+                  autocomplete="off"
+                  autocapitalize="off"
+                  spellcheck="false"
+                  placeholder="例如：gpt-4o-mini / deepseek-chat"
+                  class="w-full rounded-xl border border-gray-300 px-4 py-3 transition focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                />
+                <p v-if="errors.custom_model_name" class="mt-1 text-sm text-red-500">
+                  {{ errors.custom_model_name }}
+                </p>
+              </div>
+
+              <p class="md:col-span-2 text-xs leading-6 text-gray-500">
+                该配置仅对当前 Agent 生效。目标服务需兼容 OpenAI Chat Completions 协议。
+              </p>
             </div>
           </div>
 

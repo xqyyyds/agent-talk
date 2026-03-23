@@ -10,6 +10,11 @@ from app.database import get_db
 from app.delete_utils import hard_delete_user
 from app.deps import get_current_admin
 from app.models import AdminUser, User
+from app.services.model_secret import (
+    decrypt_model_config,
+    encrypt_model_config,
+    mask_api_key,
+)
 
 
 router = APIRouter(prefix="/admin/agents", tags=["admin-agents"])
@@ -34,6 +39,86 @@ def _build_raw_config(payload: dict, current: dict | None = None) -> str:
     return json.dumps(merged, ensure_ascii=False)
 
 
+def _resolve_model_binding(payload: dict, row: User | None = None) -> tuple[str, str, str]:
+    has_model_fields = any(
+        key in payload for key in ("model_source", "model_id", "custom_model")
+    )
+    if not has_model_fields and row is not None:
+        return row.model_source or "system", row.model_id or "", row.model_config or ""
+
+    model_source = str(payload.get("model_source") or (row.model_source if row else "system") or "system").strip().lower()
+    if model_source not in {"system", "custom"}:
+        raise HTTPException(status_code=400, detail="model_source 非法")
+
+    if model_source == "system":
+        model_id = str(payload.get("model_id") or "").strip()
+        return "system", model_id, ""
+
+    custom_model = payload.get("custom_model") or {}
+    if not isinstance(custom_model, dict):
+        raise HTTPException(status_code=400, detail="custom_model 非法")
+
+    existing_config = {}
+    if row and row.model_source == "custom" and row.model_config:
+        try:
+            existing_config = decrypt_model_config(row.model_config)
+        except Exception:
+            existing_config = {}
+
+    label = str(custom_model.get("label") or existing_config.get("label") or "").strip()
+    base_url = str(custom_model.get("base_url") or existing_config.get("base_url") or "").strip()
+    model_name = str(custom_model.get("model") or existing_config.get("model") or "").strip()
+    raw_api_key = custom_model.get("api_key")
+    api_key = str(raw_api_key).strip() if raw_api_key is not None else ""
+    if not api_key:
+        api_key = str(existing_config.get("api_key") or "").strip()
+
+    if not label:
+        raise HTTPException(status_code=400, detail="自定义模型别名不能为空")
+    if not base_url:
+        raise HTTPException(status_code=400, detail="自定义模型 Base URL 不能为空")
+    if not model_name:
+        raise HTTPException(status_code=400, detail="自定义模型名称不能为空")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="自定义模型 API Key 不能为空")
+
+    encrypted = encrypt_model_config(
+        {
+            "label": label,
+            "provider_type": "openai_compatible",
+            "base_url": base_url,
+            "api_key": api_key,
+            "model": model_name,
+        }
+    )
+    return "custom", "", encrypted
+
+
+def _safe_model_info(row: User) -> dict:
+    source = row.model_source or "system"
+    if source == "custom":
+        try:
+            custom_model = decrypt_model_config(row.model_config or "")
+        except Exception:
+            custom_model = {}
+        return {
+            "source": "custom",
+            "label": str(custom_model.get("label") or "自定义模型"),
+            "model": str(custom_model.get("model") or ""),
+            "provider_type": str(custom_model.get("provider_type") or "openai_compatible"),
+            "base_url": str(custom_model.get("base_url") or ""),
+            "api_key_masked": mask_api_key(str(custom_model.get("api_key") or "")),
+            "is_fallback": False,
+        }
+    return {
+        "source": "system",
+        "configured_model_id": row.model_id or "",
+        "effective_model_id": row.model_id or "",
+        "label": row.model_id or "默认系统模型",
+        "is_fallback": False,
+    }
+
+
 @router.get("")
 def list_agents(
     db: Session = Depends(get_db), _: AdminUser = Depends(get_current_admin)
@@ -54,6 +139,9 @@ def list_agents(
             "raw_config": r.raw_config,
             "system_prompt": r.system_prompt,
             "expressiveness": r.expressiveness,
+            "model_source": r.model_source or "system",
+            "model_id": r.model_id or "",
+            "model_info": _safe_model_info(r),
             "created_at": r.created_at,
         }
         for r in rows
@@ -81,6 +169,8 @@ def create_agent(
 
     raw_config = _build_raw_config(payload)
 
+    model_source, model_id, model_config = _resolve_model_binding(payload)
+
     row = User(
         role="agent",
         name=name,
@@ -90,6 +180,9 @@ def create_agent(
         raw_config=raw_config,
         system_prompt=payload.get("system_prompt", ""),
         expressiveness=expressiveness,
+        model_source=model_source,
+        model_id=model_id,
+        model_config=model_config,
     )
     db.add(row)
     db.commit()
@@ -148,6 +241,11 @@ def update_agent(
 
     if "is_system" in payload:
         row.is_system = bool(payload["is_system"])
+
+    model_source, model_id, model_config = _resolve_model_binding(payload, row=row)
+    row.model_source = model_source
+    row.model_id = model_id
+    row.model_config = model_config
 
     db.commit()
     log_action(

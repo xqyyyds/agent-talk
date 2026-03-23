@@ -18,12 +18,13 @@ type UserResponse struct {
 	Avatar string  `json:"avatar"`
 
 	// Agent 专属字段（可选）
-	APIKey        *string  `json:"api_key,omitempty"`
-	IsSystem      *bool    `json:"is_system,omitempty"`
-	OwnerID       *uint    `json:"owner_id,omitempty"`
-	OwnerName     *string  `json:"owner_name,omitempty"`
-	AgentTopics   []string `json:"agent_topics,omitempty"`
-	AgentStyleTag *string  `json:"agent_style_tag,omitempty"`
+	APIKey          *string  `json:"api_key,omitempty"`
+	IsSystem        *bool    `json:"is_system,omitempty"`
+	OwnerID         *uint    `json:"owner_id,omitempty"`
+	OwnerName       *string  `json:"owner_name,omitempty"`
+	AgentTopics     []string `json:"agent_topics,omitempty"`
+	AgentStyleTag   *string  `json:"agent_style_tag,omitempty"`
+	AgentModelLabel *string  `json:"agent_model_label,omitempty"`
 
 	IsFollowing *bool `json:"is_following,omitempty"`
 }
@@ -37,12 +38,13 @@ type UserProfileResponse struct {
 	Avatar string  `json:"avatar"`
 
 	// Agent 专属字段（可选）
-	APIKey        *string  `json:"api_key,omitempty"`
-	IsSystem      *bool    `json:"is_system,omitempty"`
-	OwnerID       *uint    `json:"owner_id,omitempty"`
-	OwnerName     *string  `json:"owner_name,omitempty"`
-	AgentTopics   []string `json:"agent_topics,omitempty"`
-	AgentStyleTag *string  `json:"agent_style_tag,omitempty"`
+	APIKey          *string  `json:"api_key,omitempty"`
+	IsSystem        *bool    `json:"is_system,omitempty"`
+	OwnerID         *uint    `json:"owner_id,omitempty"`
+	OwnerName       *string  `json:"owner_name,omitempty"`
+	AgentTopics     []string `json:"agent_topics,omitempty"`
+	AgentStyleTag   *string  `json:"agent_style_tag,omitempty"`
+	AgentModelLabel *string  `json:"agent_model_label,omitempty"`
 
 	Stats       UserStats `json:"stats"`
 	IsFollowing *bool     `json:"is_following,omitempty"`
@@ -203,6 +205,10 @@ func ToUserResponse(user *model.User) *UserResponse {
 		resp.IsSystem = &user.IsSystem
 		resp.OwnerID = &user.OwnerID
 		applyAgentRawConfig(resp, user.RawConfig)
+		if info := service.ResolveAgentModelInfo(user); info != nil && info.Label != "" {
+			label := info.Label
+			resp.AgentModelLabel = &label
+		}
 
 		if !user.IsSystem && user.OwnerID > 0 {
 			if user.Owner != nil && user.Owner.Name != "" {
@@ -244,6 +250,10 @@ func ToUserProfileResponse(user *model.User, stats UserStats) *UserProfileRespon
 		resp.IsSystem = &user.IsSystem
 		resp.OwnerID = &user.OwnerID
 		applyAgentRawConfig(resp, user.RawConfig)
+		if info := service.ResolveAgentModelInfo(user); info != nil && info.Label != "" {
+			label := info.Label
+			resp.AgentModelLabel = &label
+		}
 
 		if !user.IsSystem && user.OwnerID > 0 {
 			if user.Owner != nil && user.Owner.Name != "" {

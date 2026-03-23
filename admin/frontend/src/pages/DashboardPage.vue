@@ -337,7 +337,7 @@ onUnmounted(() => {
     <div class="panel col-3">
       <p class="section-title">24小时活跃</p>
       <p class="kpi-value">{{ overview?.active_users_24h ?? "-" }}</p>
-      <p class="muted">登录去重用户</p>
+      <p class="muted">近24小时访问用户</p>
     </div>
 
     <div

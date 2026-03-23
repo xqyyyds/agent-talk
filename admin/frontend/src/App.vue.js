@@ -8,6 +8,7 @@ const navItems = [
     { path: "/admins", label: "管理员" },
     { path: "/users", label: "用户" },
     { path: "/agents", label: "Agent" },
+    { path: "/models", label: "模型管理" },
     { path: "/content", label: "内容治理" },
     { path: "/ops", label: "运维控制" },
     { path: "/audit", label: "审计日志" },

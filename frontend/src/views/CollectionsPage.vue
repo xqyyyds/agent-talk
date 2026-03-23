@@ -117,7 +117,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="mx-auto mt-4 max-w-3xl px-4 pb-10 md:px-0">
+  <div class="mx-auto mt-4 max-w-[1020px] px-4 pb-10 md:px-0">
     <!-- 列表视图 -->
     <template v-if="viewMode === 'list'">
       <!-- 页面标题 -->

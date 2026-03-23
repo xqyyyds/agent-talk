@@ -20,10 +20,36 @@ type AgentRow = {
   avatar?: string;
   owner_id: number;
   is_system: boolean;
+  model_source?: "system" | "custom";
+  model_id?: string;
+  model_info?: {
+    source?: "system" | "custom";
+    label?: string;
+    model?: string;
+    provider_type?: string;
+    base_url?: string;
+    api_key_masked?: string;
+    configured_model_id?: string;
+    effective_model_id?: string;
+  };
   raw_config?: string | Partial<AgentRawConfig> | null;
   system_prompt?: string;
   expressiveness?: string;
   created_at?: string;
+};
+
+type SystemModelOption = {
+  id: string;
+  label: string;
+  provider_type?: string;
+  is_default?: boolean;
+};
+
+type CustomModelInput = {
+  label: string;
+  base_url: string;
+  api_key: string;
+  model: string;
 };
 
 type AgentForm = {
@@ -40,6 +66,9 @@ type AgentForm = {
   owner_id: number;
   is_system: boolean;
   avatar: string;
+  model_source: "system" | "custom";
+  model_id: string;
+  custom_model: CustomModelInput;
 };
 
 const DEFAULT_BIAS = "理性客观，基于事实和数据进行分析";
@@ -209,6 +238,14 @@ function defaultForm(): AgentForm {
     owner_id: 0,
     is_system: false,
     avatar: "",
+    model_source: "system",
+    model_id: "",
+    custom_model: {
+      label: "",
+      base_url: "",
+      api_key: "",
+      model: "",
+    },
   };
 }
 
@@ -272,6 +309,9 @@ function mergeForm(next: AgentForm) {
   form.owner_id = next.owner_id;
   form.is_system = next.is_system;
   form.avatar = next.avatar;
+  form.model_source = next.model_source;
+  form.model_id = next.model_id;
+  form.custom_model = { ...next.custom_model };
 }
 
 const rows = ref<AgentRow[]>([]);
@@ -281,6 +321,11 @@ const success = ref("");
 const optimizing = ref(false);
 const testing = ref(false);
 const saving = ref(false);
+const loadingModelCatalog = ref(false);
+const modelCatalogError = ref("");
+const modelOptions = ref<SystemModelOption[]>([]);
+const customModelKeyMasked = ref("");
+const revealCustomApiKey = ref(false);
 
 const form = reactive<AgentForm>(defaultForm());
 const formErrors = ref<Record<string, string>>({});
@@ -360,8 +405,8 @@ function handleAvatarUpload(event: Event) {
     error.value = "请选择图片文件（JPG/PNG/GIF）";
     return;
   }
-  if (file.size > 5 * 1024 * 1024) {
-    error.value = "头像大小不能超过 5MB";
+  if (file.size > 8 * 1024 * 1024) {
+    error.value = "头像大小不能超过 8MB";
     return;
   }
   const reader = new FileReader();
@@ -398,6 +443,59 @@ function clearMessages() {
   success.value = "";
 }
 
+function normalizeModelCatalogPayload(data: any) {
+  const payload = data?.data ?? data ?? {};
+  const models = Array.isArray(payload.models)
+    ? payload.models
+    : Array.isArray(payload.selectable_models)
+      ? payload.selectable_models
+      : [];
+  modelOptions.value = models.map((item: any) => ({
+    id: String(item.id || ""),
+    label: String(item.label || item.id || ""),
+    provider_type: String(item.provider_type || "openai_compatible"),
+    is_default: Boolean(item.is_default),
+  }));
+  if (
+    form.model_source === "system" &&
+    (!form.model_id || !modelOptions.value.some((item) => item.id === form.model_id))
+  ) {
+    const fallback = modelOptions.value.find((item) => item.is_default) || modelOptions.value[0];
+    form.model_id = fallback?.id || "";
+  }
+}
+
+async function loadModelCatalog() {
+  loadingModelCatalog.value = true;
+  modelCatalogError.value = "";
+  try {
+    const { data } = await api.getModelCatalog();
+    normalizeModelCatalogPayload(data);
+  } catch (err: any) {
+    modelCatalogError.value =
+      err?.response?.data?.detail || err?.message || "加载系统模型列表失败";
+  } finally {
+    loadingModelCatalog.value = false;
+  }
+}
+
+function setModelSource(source: "system" | "custom") {
+  form.model_source = source;
+  if (source === "system") {
+    customModelKeyMasked.value = "";
+    form.custom_model = {
+      label: "",
+      base_url: "",
+      api_key: "",
+      model: "",
+    };
+    if (!form.model_id) {
+      const fallback = modelOptions.value.find((item) => item.is_default) || modelOptions.value[0];
+      form.model_id = fallback?.id || "";
+    }
+  }
+}
+
 function resetToCreateMode() {
   editMode.value = false;
   editingAgentId.value = null;
@@ -405,6 +503,8 @@ function resetToCreateMode() {
   optimizedPrompt.value = "";
   testReply.value = "";
   formErrors.value = {};
+  customModelKeyMasked.value = "";
+  revealCustomApiKey.value = false;
   clearMessages();
 }
 
@@ -438,6 +538,27 @@ function validateForm(): boolean {
   }
   if (!Number.isFinite(form.owner_id) || form.owner_id < 0) {
     nextErrors.owner_id = "归属用户 ID 不能为负数";
+  }
+  if (form.model_source === "system") {
+    if (!form.model_id.trim()) {
+      nextErrors.model_id = "请选择系统模型";
+    }
+  } else {
+    if (!form.custom_model.label.trim()) {
+      nextErrors.custom_model_label = "请填写模型别名";
+    }
+    if (!form.custom_model.base_url.trim()) {
+      nextErrors.custom_model_base_url = "请填写 Base URL";
+    }
+    if (!form.custom_model.model.trim()) {
+      nextErrors.custom_model_model = "请填写模型名称";
+    }
+    if (!editMode.value && !form.custom_model.api_key.trim()) {
+      nextErrors.custom_model_api_key = "新建自定义模型时必须填写 API Key";
+    }
+    if (editMode.value && !customModelKeyMasked.value && !form.custom_model.api_key.trim()) {
+      nextErrors.custom_model_api_key = "请填写 API Key";
+    }
   }
   formErrors.value = nextErrors;
   return Object.keys(nextErrors).length === 0;
@@ -522,6 +643,17 @@ function buildPayload() {
     owner_id: form.is_system ? 0 : Math.max(0, Math.floor(form.owner_id)),
     is_system: form.is_system,
     avatar: form.avatar.trim(),
+    model_source: form.model_source,
+    model_id: form.model_source === "system" ? form.model_id.trim() : "",
+    custom_model:
+      form.model_source === "custom"
+        ? {
+            label: form.custom_model.label.trim(),
+            base_url: form.custom_model.base_url.trim(),
+            api_key: form.custom_model.api_key.trim(),
+            model: form.custom_model.model.trim(),
+          }
+        : undefined,
   };
 }
 
@@ -552,6 +684,9 @@ async function submitAgent() {
 
 function editRow(row: AgentRow) {
   const cfg = parseRawConfig(row.raw_config);
+  const modelInfo = row.model_info || {};
+  const modelSource =
+    row.model_source === "custom" || modelInfo.source === "custom" ? "custom" : "system";
   editMode.value = true;
   editingAgentId.value = row.id;
   mergeForm({
@@ -568,7 +703,17 @@ function editRow(row: AgentRow) {
     owner_id: Number(row.owner_id ?? 0),
     is_system: Boolean(row.is_system),
     avatar: row.avatar || "",
+    model_source: modelSource,
+    model_id: String(row.model_id || modelInfo.configured_model_id || modelInfo.effective_model_id || ""),
+    custom_model: {
+      label: String(modelInfo.label || ""),
+      base_url: String(modelInfo.base_url || ""),
+      api_key: "",
+      model: String(modelInfo.model || ""),
+    },
   });
+  customModelKeyMasked.value = String(modelInfo.api_key_masked || "");
+  revealCustomApiKey.value = false;
   optimizedPrompt.value = "";
   testReply.value = "";
   formErrors.value = {};
@@ -593,7 +738,9 @@ async function removeRow(row: AgentRow) {
   }
 }
 
-onMounted(loadAgents);
+onMounted(async () => {
+  await Promise.all([loadAgents(), loadModelCatalog()]);
+});
 </script>
 
 <template>
@@ -721,6 +868,100 @@ onMounted(loadAgents);
           <span>系统 Agent</span>
         </label>
 
+        <label>使用模型</label>
+        <div class="row">
+          <button
+            type="button"
+            class="secondary"
+            :class="{ 'is-active': form.model_source === 'system' }"
+            @click="setModelSource('system')"
+          >
+            系统模型
+          </button>
+          <button
+            type="button"
+            class="secondary"
+            :class="{ 'is-active': form.model_source === 'custom' }"
+            @click="setModelSource('custom')"
+          >
+            自定义 OpenAI 兼容模型
+          </button>
+          <button
+            type="button"
+            class="secondary"
+            :disabled="loadingModelCatalog"
+            @click="loadModelCatalog"
+          >
+            {{ loadingModelCatalog ? "刷新中..." : "刷新模型列表" }}
+          </button>
+        </div>
+        <p v-if="modelCatalogError" class="form-error">{{ modelCatalogError }}</p>
+
+        <template v-if="form.model_source === 'system'">
+          <label>系统模型</label>
+          <select v-model="form.model_id">
+            <option value="" disabled>请选择系统模型</option>
+            <option v-for="item in modelOptions" :key="item.id" :value="item.id">
+              {{ item.label }}{{ item.is_default ? "（默认）" : "" }}
+            </option>
+          </select>
+          <p v-if="formErrors.model_id" class="form-error">{{ formErrors.model_id }}</p>
+        </template>
+
+        <template v-else>
+          <label>模型别名</label>
+          <input
+            v-model="form.custom_model.label"
+            placeholder="例如：我的 DeepSeek / 私有 GPT"
+            autocomplete="off"
+          />
+          <p v-if="formErrors.custom_model_label" class="form-error">
+            {{ formErrors.custom_model_label }}
+          </p>
+
+          <label>Base URL</label>
+          <input
+            v-model="form.custom_model.base_url"
+            placeholder="https://api.example.com/v1"
+            autocomplete="off"
+          />
+          <p v-if="formErrors.custom_model_base_url" class="form-error">
+            {{ formErrors.custom_model_base_url }}
+          </p>
+
+          <label>模型名称</label>
+          <input
+            v-model="form.custom_model.model"
+            placeholder="例如：gpt-4o-mini / deepseek-chat"
+            autocomplete="off"
+          />
+          <p v-if="formErrors.custom_model_model" class="form-error">
+            {{ formErrors.custom_model_model }}
+          </p>
+
+          <label>API Key</label>
+          <div class="row">
+            <input
+              v-model="form.custom_model.api_key"
+              :type="revealCustomApiKey ? 'text' : 'password'"
+              placeholder="sk-..."
+              autocomplete="new-password"
+              style="flex: 1"
+            />
+            <button
+              type="button"
+              class="secondary"
+              @click="revealCustomApiKey = !revealCustomApiKey"
+            >
+              {{ revealCustomApiKey ? "隐藏" : "显示" }}
+            </button>
+          </div>
+          <p v-if="customModelKeyMasked" class="muted">当前已保存：{{ customModelKeyMasked }}</p>
+          <p v-if="formErrors.custom_model_api_key" class="form-error">
+            {{ formErrors.custom_model_api_key }}
+          </p>
+        </template>
+
         <label>Agent 头像</label>
         <div class="avatar-row">
           <div class="avatar-preview">
@@ -838,6 +1079,7 @@ onMounted(loadAgents);
               <th>归属</th>
               <th>类型</th>
               <th>擅长话题</th>
+              <th>使用模型</th>
               <th>活跃</th>
               <th>表达</th>
               <th class="time-cell">创建时间（北京时间）</th>
@@ -858,6 +1100,7 @@ onMounted(loadAgents);
                   +{{ topicMoreCount(row) }}
                 </span>
               </td>
+              <td>{{ row.model_info?.label || row.model_id || "默认系统模型" }}</td>
               <td>{{ parseRawConfig(row.raw_config).activity_level }}</td>
               <td>{{ parseRawConfig(row.raw_config).expressiveness }}</td>
               <td class="time-cell">{{ formatDateTime(row.created_at) }}</td>
@@ -867,7 +1110,7 @@ onMounted(loadAgents);
               </td>
             </tr>
             <tr v-if="filteredRows.length === 0">
-              <td colspan="9" style="text-align: center; opacity: 0.8">暂无数据</td>
+              <td colspan="10" style="text-align: center; opacity: 0.8">暂无数据</td>
             </tr>
           </tbody>
         </table>

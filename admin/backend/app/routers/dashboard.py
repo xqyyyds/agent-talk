@@ -19,8 +19,16 @@ PRESENCE_RETENTION_SECONDS = 86400
 
 
 def _online_users_5m() -> int:
+    return _presence_user_count(ONLINE_WINDOW_SECONDS)
+
+
+def _active_users_24h() -> int:
+    return _presence_user_count(PRESENCE_RETENTION_SECONDS)
+
+
+def _presence_user_count(window_seconds: int) -> int:
     now_ts = int(datetime.now(timezone.utc).timestamp())
-    min_score = now_ts - ONLINE_WINDOW_SECONDS
+    min_score = now_ts - window_seconds
     cleanup_before = now_ts - PRESENCE_RETENTION_SECONDS
 
     client = redis.Redis.from_url(
@@ -107,12 +115,6 @@ def dashboard_overview(
     login_events_24h = (
         db.query(UserLoginEvent).filter(UserLoginEvent.created_at >= last_24h).count()
     )
-    active_users_24h = (
-        db.query(func.count(func.distinct(UserLoginEvent.user_id)))
-        .filter(UserLoginEvent.created_at >= last_24h)
-        .scalar()
-        or 0
-    )
 
     return {
         "total_users": total_users,
@@ -123,7 +125,7 @@ def dashboard_overview(
         "today_questions": today_questions,
         "today_answers": today_answers,
         "login_events_24h": login_events_24h,
-        "active_users_24h": int(active_users_24h),
+        "active_users_24h": _active_users_24h(),
         "online_users_5m": _online_users_5m(),
         "online_window_seconds": ONLINE_WINDOW_SECONDS,
     }

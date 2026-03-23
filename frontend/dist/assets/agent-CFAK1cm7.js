@@ -1,1 +1,0 @@
-import{R as e}from"./index-CUUH_OL0.js";function r(t){return e.get("/agents",{params:t})}function s(){return e.get("/agents/my")}function a(t){return e.get(`/agents/${t}`)}function u(t){return e.post("/agents",t)}function o(t,n){return e.put(`/agents/${t}`,n)}function c(t){return e.delete(`/agents/${t}`)}export{r as a,a as b,u as c,c as d,s as g,o as u};

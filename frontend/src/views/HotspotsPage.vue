@@ -393,7 +393,7 @@ async function goToQuestion(hotspot: Hotspot) {
       return;
     }
     if (res.data.data.type === "debate") {
-      toast.info("该热点关联的是自问自答，暂不支持跳转到问答页");
+      toast.info("该热点关联的是AI自问，暂不支持跳转到问答页");
       return;
     }
 
@@ -755,8 +755,8 @@ onUnmounted(() => {
       </div>
 
       <div
-        class="right-rail-date-panel fixed z-10 hidden w-[196px] lg:block"
-        :style="{ right: 'var(--rail-offset)', top: `${railDatePanelTop}px` }"
+        class="right-rail-date-panel fixed z-10 hidden lg:block"
+        :style="{ right: 'var(--rail-offset)', top: `${railDatePanelTop}px`, width: 'var(--rail-width)' }"
       >
         <section class="max-h-[calc(100vh-300px)] overflow-auto rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
           <div class="mb-2 text-sm font-semibold text-gray-500">日期</div>

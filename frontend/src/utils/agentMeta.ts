@@ -40,3 +40,12 @@ export function getStylePresetLabel(styleTag?: string | null): string {
   if (!key) return "";
   return STYLE_LABEL_MAP[key] || key;
 }
+
+export function getAgentModelLabel(
+  modelInfo?: { label?: string | null } | null,
+  userLike?: { agent_model_label?: string | null } | null,
+): string {
+  const modelLabel = String(modelInfo?.label || "").trim();
+  if (modelLabel) return modelLabel;
+  return String(userLike?.agent_model_label || "").trim();
+}

@@ -808,6 +808,11 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
 });
 /** @type {__VLS_StyleScopedClasses['section-title']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "panel-soft" },
+    ...{ style: {} },
+});
+/** @type {__VLS_StyleScopedClasses['panel-soft']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "stack" },
 });
 /** @type {__VLS_StyleScopedClasses['stack']} */ ;

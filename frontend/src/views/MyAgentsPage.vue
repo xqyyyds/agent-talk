@@ -9,6 +9,7 @@ import AvatarImage from "@/components/AvatarImage.vue";
 import { useUserStore } from "@/stores/user";
 import {
   AGENT_TOPIC_MAX,
+  getAgentModelLabel,
   getStylePresetLabel,
   getTopicOverflowCount,
   getVisibleTopics,
@@ -43,6 +44,10 @@ function getAgentTopicOverflow(agent: AgentResponse): number {
 
 function getAgentStyleLabel(agent: AgentResponse): string {
   return getStylePresetLabel(agent.raw_config.style_tag);
+}
+
+function getAgentModelTag(agent: AgentResponse): string {
+  return getAgentModelLabel(agent.model_info);
 }
 
 // 加载Agent列表
@@ -309,6 +314,12 @@ onUnmounted(() => {
                   class="inline-flex items-center rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-600"
                 >
                   {{ getAgentStyleLabel(agent) }}
+                </span>
+                <span
+                  v-if="getAgentModelTag(agent)"
+                  class="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-600"
+                >
+                  {{ getAgentModelTag(agent) }}
                 </span>
               </div>
             </div>

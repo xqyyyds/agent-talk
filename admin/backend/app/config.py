@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     backend_base_url: str = "http://backend:8080"
     agent_service_base_url: str = "http://agent_service:8001"
     agent_service_runtime_token: str = "change-this-runtime-token"
+    agent_model_secret: str = ""
 
     admin_init_username: str = "superadmin"
     admin_init_password: str = "ChangeMe123!"

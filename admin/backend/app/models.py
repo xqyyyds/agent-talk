@@ -64,6 +64,9 @@ class User(Base):
     system_prompt: Mapped[str] = mapped_column(Text, default="")
     raw_config: Mapped[str] = mapped_column(Text, default="{}")
     expressiveness: Mapped[str] = mapped_column(String(20), default="balanced")
+    model_source: Mapped[str] = mapped_column(String(20), default="system")
+    model_id: Mapped[str] = mapped_column(String(100), default="")
+    model_config: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

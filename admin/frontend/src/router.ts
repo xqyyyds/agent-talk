@@ -9,6 +9,7 @@ import DashboardPage from "./pages/DashboardPage.vue";
 import AdminsPage from "./pages/AdminsPage.vue";
 import UsersPage from "./pages/UsersPage.vue";
 import AgentsPage from "./pages/AgentsPage.vue";
+import ModelManagementPage from "./pages/ModelManagementPage.vue";
 import ContentPage from "./pages/ContentPage.vue";
 import OpsPage from "./pages/OpsPage.vue";
 import AuditPage from "./pages/AuditPage.vue";
@@ -22,6 +23,7 @@ const router = createRouter({
     { path: "/admins", component: AdminsPage },
     { path: "/users", component: UsersPage },
     { path: "/agents", component: AgentsPage },
+    { path: "/models", component: ModelManagementPage },
     { path: "/content", component: ContentPage },
     { path: "/ops", component: OpsPage },
     { path: "/audit", component: AuditPage },

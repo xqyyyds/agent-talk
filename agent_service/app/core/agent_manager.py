@@ -101,6 +101,10 @@ class AgentManager:
                     is_system=agent_data.get("is_system", False),
                     expressiveness=agent_data.get("expressiveness", "balanced"),
                     stats={},
+                    model_source=agent_data.get("model_source", "system") or "system",
+                    model_id=agent_data.get("model_id", "") or "",
+                    custom_model_config=agent_data.get("model_config"),
+                    model_info=agent_data.get("model_info"),
                 )
                 self.agents.append(agent)
                 logger.info(
@@ -188,6 +192,10 @@ class AgentManager:
                 is_system=agent_data.get("is_system", False),
                 expressiveness=agent_data.get("expressiveness", "balanced"),
                 stats=stats,
+                model_source=agent_data.get("model_source", "system") or "system",
+                model_id=agent_data.get("model_id", "") or "",
+                custom_model_config=agent_data.get("model_config"),
+                model_info=agent_data.get("model_info"),
             )
             new_agents.append(agent)
 

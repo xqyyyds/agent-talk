@@ -2,14 +2,17 @@ package controller
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"backend/internal/database"
 	"backend/internal/middleware"
 	"backend/internal/model"
+	"backend/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
@@ -31,44 +34,58 @@ type RawConfig struct {
 	Expressiveness string   `json:"expressiveness"`
 }
 
+type CustomModelPayload struct {
+	Label   string `json:"label"`
+	BaseURL string `json:"base_url"`
+	APIKey  string `json:"api_key,omitempty"`
+	Model   string `json:"model"`
+}
+
 type CreateAgentRequest struct {
-	Name           string   `json:"name" binding:"required,min=2,max=50"`
-	Headline       string   `json:"headline" binding:"max=100"`
-	Bio            string   `json:"bio" binding:"max=1000"`
-	Topics         []string `json:"topics" binding:"required,min=1,dive,max=50"`
-	Bias           string   `json:"bias" binding:"max=200"`
-	StyleTag       string   `json:"style_tag" binding:"max=50"`
-	ReplyMode      string   `json:"reply_mode" binding:"max=50"`
-	ActivityLevel  string   `json:"activity_level" binding:"required,oneof=high medium low"`
-	Avatar         string   `json:"avatar"`
-	SystemPrompt   string   `json:"system_prompt" binding:"omitempty,max=5000"`
-	Expressiveness string   `json:"expressiveness" binding:"omitempty,oneof=terse balanced verbose dynamic"`
+	Name           string              `json:"name" binding:"required,min=2,max=50"`
+	Headline       string              `json:"headline" binding:"max=100"`
+	Bio            string              `json:"bio" binding:"max=1000"`
+	Topics         []string            `json:"topics" binding:"required,min=1,dive,max=50"`
+	Bias           string              `json:"bias" binding:"max=200"`
+	StyleTag       string              `json:"style_tag" binding:"max=50"`
+	ReplyMode      string              `json:"reply_mode" binding:"max=50"`
+	ActivityLevel  string              `json:"activity_level" binding:"required,oneof=high medium low"`
+	Avatar         string              `json:"avatar"`
+	SystemPrompt   string              `json:"system_prompt" binding:"omitempty,max=5000"`
+	Expressiveness string              `json:"expressiveness" binding:"omitempty,oneof=terse balanced verbose dynamic"`
+	ModelSource    string              `json:"model_source" binding:"omitempty,oneof=system custom"`
+	ModelID        string              `json:"model_id"`
+	CustomModel    *CustomModelPayload `json:"custom_model,omitempty"`
 }
 
 type UpdateAgentRequest struct {
-	Name           *string   `json:"name" binding:"omitempty,min=2,max=50"`
-	Headline       *string   `json:"headline" binding:"omitempty,max=100"`
-	Bio            *string   `json:"bio" binding:"omitempty,max=1000"`
-	Topics         *[]string `json:"topics" binding:"omitempty,min=1,dive,max=50"`
-	Bias           *string   `json:"bias" binding:"omitempty,max=200"`
-	StyleTag       *string   `json:"style_tag" binding:"omitempty,max=50"`
-	ReplyMode      *string   `json:"reply_mode" binding:"omitempty,max=50"`
-	ActivityLevel  *string   `json:"activity_level" binding:"omitempty,oneof=high medium low"`
-	Avatar         *string   `json:"avatar"`
-	SystemPrompt   *string   `json:"system_prompt" binding:"omitempty,max=5000"`
-	Expressiveness *string   `json:"expressiveness" binding:"omitempty,oneof=terse balanced verbose dynamic"`
+	Name           *string             `json:"name" binding:"omitempty,min=2,max=50"`
+	Headline       *string             `json:"headline" binding:"omitempty,max=100"`
+	Bio            *string             `json:"bio" binding:"omitempty,max=1000"`
+	Topics         *[]string           `json:"topics" binding:"omitempty,min=1,dive,max=50"`
+	Bias           *string             `json:"bias" binding:"omitempty,max=200"`
+	StyleTag       *string             `json:"style_tag" binding:"omitempty,max=50"`
+	ReplyMode      *string             `json:"reply_mode" binding:"omitempty,max=50"`
+	ActivityLevel  *string             `json:"activity_level" binding:"omitempty,oneof=high medium low"`
+	Avatar         *string             `json:"avatar"`
+	SystemPrompt   *string             `json:"system_prompt" binding:"omitempty,max=5000"`
+	Expressiveness *string             `json:"expressiveness" binding:"omitempty,oneof=terse balanced verbose dynamic"`
+	ModelSource    *string             `json:"model_source" binding:"omitempty,oneof=system custom"`
+	ModelID        *string             `json:"model_id"`
+	CustomModel    *CustomModelPayload `json:"custom_model,omitempty"`
 }
 
 type AgentResponse struct {
-	ID           uint       `json:"id"`
-	Name         string     `json:"name"`
-	Avatar       string     `json:"avatar"`
-	IsSystem     bool       `json:"is_system"`
-	OwnerID      uint       `json:"owner_id"`
-	SystemPrompt string     `json:"system_prompt,omitempty"`
-	RawConfig    RawConfig  `json:"raw_config"`
-	Stats        AgentStats `json:"stats"`
-	APIKey       string     `json:"api_key,omitempty"` // 只在创建时返回
+	ID           uint                    `json:"id"`
+	Name         string                  `json:"name"`
+	Avatar       string                  `json:"avatar"`
+	IsSystem     bool                    `json:"is_system"`
+	OwnerID      uint                    `json:"owner_id"`
+	SystemPrompt string                  `json:"system_prompt,omitempty"`
+	RawConfig    RawConfig               `json:"raw_config"`
+	Stats        AgentStats              `json:"stats"`
+	APIKey       string                  `json:"api_key,omitempty"` // 只在创建时返回
+	ModelInfo    *service.AgentModelInfo `json:"model_info,omitempty"`
 }
 
 type AgentStats struct {
@@ -82,6 +99,107 @@ type AgentListResponse struct {
 	Total    int64           `json:"total"`
 	Page     int             `json:"page"`
 	PageSize int             `json:"page_size"`
+}
+
+func validateCustomModelPayload(payload *CustomModelPayload, keepExistingAPIKey bool) error {
+	if payload == nil {
+		return nil
+	}
+	if strings.TrimSpace(payload.BaseURL) == "" {
+		return fmt.Errorf("自定义模型 Base URL 不能为空")
+	}
+	if strings.TrimSpace(payload.Model) == "" {
+		return fmt.Errorf("自定义模型名称不能为空")
+	}
+	if !keepExistingAPIKey && strings.TrimSpace(payload.APIKey) == "" {
+		return fmt.Errorf("自定义模型 API Key 不能为空")
+	}
+	return nil
+}
+
+func buildCreateAgentModelBinding(req CreateAgentRequest) (string, string, string, error) {
+	options, err := service.BuildAgentModelOptions()
+	if err != nil {
+		return "", "", "", err
+	}
+	source := strings.TrimSpace(req.ModelSource)
+	if source == "" {
+		source = service.ModelSourceSystem
+	}
+
+	if source == service.ModelSourceCustom {
+		if err := validateCustomModelPayload(req.CustomModel, false); err != nil {
+			return "", "", "", err
+		}
+		encrypted, err := service.EncryptCustomModelConfig(service.CustomModelConfig{
+			Label:        strings.TrimSpace(req.CustomModel.Label),
+			ProviderType: "openai_compatible",
+			BaseURL:      strings.TrimSpace(req.CustomModel.BaseURL),
+			APIKey:       strings.TrimSpace(req.CustomModel.APIKey),
+			Model:        strings.TrimSpace(req.CustomModel.Model),
+		})
+		return service.ModelSourceCustom, "", encrypted, err
+	}
+
+	modelID := strings.TrimSpace(req.ModelID)
+	if modelID == "" {
+		modelID = options.DefaultModelID
+	}
+	return service.ModelSourceSystem, modelID, "", nil
+}
+
+func buildUpdatedAgentModelBinding(req UpdateAgentRequest, agent *model.User) (string, string, string, bool, error) {
+	if req.ModelSource == nil && req.ModelID == nil && req.CustomModel == nil {
+		return "", "", "", false, nil
+	}
+
+	options, err := service.BuildAgentModelOptions()
+	if err != nil {
+		return "", "", "", false, err
+	}
+	source := agent.ModelSource
+	if source == "" {
+		source = service.ModelSourceSystem
+	}
+	if req.ModelSource != nil {
+		source = strings.TrimSpace(*req.ModelSource)
+	}
+
+	if source == service.ModelSourceCustom {
+		payload := req.CustomModel
+		if payload == nil {
+			payload = &CustomModelPayload{}
+		}
+		keepExistingKey := agent.ModelSource == service.ModelSourceCustom && strings.TrimSpace(payload.APIKey) == ""
+		if err := validateCustomModelPayload(payload, keepExistingKey); err != nil {
+			return "", "", "", false, err
+		}
+		cfg := service.CustomModelConfig{
+			Label:        strings.TrimSpace(payload.Label),
+			ProviderType: "openai_compatible",
+			BaseURL:      strings.TrimSpace(payload.BaseURL),
+			Model:        strings.TrimSpace(payload.Model),
+		}
+		if keepExistingKey && strings.TrimSpace(agent.ModelConfig) != "" {
+			existingCfg, err := service.DecryptCustomModelConfig(agent.ModelConfig)
+			if err == nil {
+				cfg.APIKey = existingCfg.APIKey
+			}
+		} else {
+			cfg.APIKey = strings.TrimSpace(payload.APIKey)
+		}
+		encrypted, err := service.EncryptCustomModelConfig(cfg)
+		return service.ModelSourceCustom, "", encrypted, true, err
+	}
+
+	modelID := agent.ModelID
+	if strings.TrimSpace(modelID) == "" {
+		modelID = options.DefaultModelID
+	}
+	if req.ModelID != nil && strings.TrimSpace(*req.ModelID) != "" {
+		modelID = strings.TrimSpace(*req.ModelID)
+	}
+	return service.ModelSourceSystem, modelID, "", true, nil
 }
 
 // ============================================
@@ -133,6 +251,11 @@ func CreateAgent(c *gin.Context) {
 	// 创建 Agent（作为 User 记录）
 	// JWT 中间件存储的 userID 是 float64，需要转换为 uint
 	ownerID := uint(userID.(float64))
+	modelSource, modelID, modelConfig, err := buildCreateAgentModelBinding(req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
 	agent := model.User{
 		Name:           req.Name,
 		Avatar:         req.Avatar,
@@ -142,6 +265,9 @@ func CreateAgent(c *gin.Context) {
 		RawConfig:      string(rawConfigJSON),
 		SystemPrompt:   req.SystemPrompt,
 		Expressiveness: req.Expressiveness,
+		ModelSource:    modelSource,
+		ModelID:        modelID,
+		ModelConfig:    modelConfig,
 	}
 
 	// BeforeCreate 钩子会自动生成 API Key
@@ -385,6 +511,14 @@ func UpdateAgent(c *gin.Context) {
 	if req.Expressiveness != nil {
 		updates["expressiveness"] = *req.Expressiveness
 	}
+	if modelSource, modelID, modelConfig, changed, err := buildUpdatedAgentModelBinding(req, &agent); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		return
+	} else if changed {
+		updates["model_source"] = modelSource
+		updates["model_id"] = modelID
+		updates["model_config"] = modelConfig
+	}
 	updates["raw_config"] = string(newRawConfigJSON)
 
 	if err := database.DB.Model(&agent).Updates(updates).Error; err != nil {
@@ -470,16 +604,29 @@ func DeleteAgent(c *gin.Context) {
 // ============================================
 
 type InternalAgentResponse struct {
-	ID             uint   `json:"id"`
-	Name           string `json:"name"`
-	Avatar         string `json:"avatar"`
-	APIKey         string `json:"api_key"`
-	JWTToken       string `json:"jwt_token"`
-	SystemPrompt   string `json:"system_prompt"`
-	RawConfig      string `json:"raw_config"`
-	IsSystem       bool   `json:"is_system"`
-	OwnerID        uint   `json:"owner_id"`
-	Expressiveness string `json:"expressiveness"`
+	ID             uint                    `json:"id"`
+	Name           string                  `json:"name"`
+	Avatar         string                  `json:"avatar"`
+	APIKey         string                  `json:"api_key"`
+	JWTToken       string                  `json:"jwt_token"`
+	SystemPrompt   string                  `json:"system_prompt"`
+	RawConfig      string                  `json:"raw_config"`
+	IsSystem       bool                    `json:"is_system"`
+	OwnerID        uint                    `json:"owner_id"`
+	Expressiveness string                  `json:"expressiveness"`
+	ModelSource    string                  `json:"model_source,omitempty"`
+	ModelID        string                  `json:"model_id,omitempty"`
+	ModelConfig    string                  `json:"model_config,omitempty"`
+	ModelInfo      *service.AgentModelInfo `json:"model_info,omitempty"`
+}
+
+func GetAgentModelOptions(c *gin.Context) {
+	options, err := service.BuildAgentModelOptions()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "读取系统模型选项失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": options})
 }
 
 // GetActiveAgents 获取所有活跃的 Agent（供内部调用）
@@ -492,7 +639,7 @@ func GetActiveAgents(c *gin.Context) {
 	var agents []model.User
 
 	database.DB.Where("role = ?", model.RoleAgent).
-		Select("id, name, avatar, api_key, system_prompt, raw_config, is_system, owner_id, expressiveness").
+		Select("id, name, avatar, api_key, system_prompt, raw_config, is_system, owner_id, expressiveness, model_source, model_id, model_config").
 		Find(&agents)
 
 	result := make([]InternalAgentResponse, 0, len(agents))
@@ -509,6 +656,10 @@ func GetActiveAgents(c *gin.Context) {
 			IsSystem:       agent.IsSystem,
 			OwnerID:        agent.OwnerID,
 			Expressiveness: agent.Expressiveness,
+			ModelSource:    agent.ModelSource,
+			ModelID:        agent.ModelID,
+			ModelConfig:    agent.ModelConfig,
+			ModelInfo:      service.ResolveAgentModelInfo(&agent),
 		})
 	}
 
@@ -553,6 +704,7 @@ func buildAgentResponse(agent model.User, includeAPIKey bool) AgentResponse {
 		SystemPrompt: agent.SystemPrompt,
 		RawConfig:    rawConfig,
 		Stats:        stats,
+		ModelInfo:    service.ResolveAgentModelInfo(&agent),
 	}
 
 	// 只在创建时返回 API Key

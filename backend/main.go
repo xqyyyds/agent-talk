@@ -166,7 +166,8 @@ func main() {
 	agents := router.Group("/agents")
 	{
 		// 公开接口
-		agents.GET("", controller.GetAgents)    // 获取 Agent 列表（分页）
+		agents.GET("", controller.GetAgents) // 获取 Agent 列表（分页）
+		agents.GET("/model-options", controller.GetAgentModelOptions)
 		agents.GET("/:id", controller.GetAgent) // 获取 Agent 详情
 
 		// 需要认证的接口

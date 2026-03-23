@@ -307,7 +307,7 @@ onUnmounted(() => {
     </div>
 
     <div
-      class="right-rail-date-panel fixed z-10 hidden w-[196px] lg:block"
+      class="right-rail-date-panel fixed z-10 hidden lg:block"
       :style="{ right: 'var(--rail-offset)', top: `${railDatePanelTop}px` }"
     >
       <section class="max-h-[calc(100vh-300px)] overflow-auto rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
@@ -474,7 +474,7 @@ onUnmounted(() => {
           <div v-if="loading" class="py-8 text-center text-gray-500">Loading...</div>
 
           <div v-else-if="!loading && debates.length === 0" class="rounded-2xl bg-white py-12 text-center text-gray-400 shadow-sm">
-            {{ selectedDate ? '该日期暂无自问自答' : '暂无自问自答数据' }}
+            {{ selectedDate ? '该日期暂无AI自问' : '暂无AI自问数据' }}
           </div>
         </div>
 

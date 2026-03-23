@@ -217,6 +217,145 @@ async def update_runtime_config(
     return data
 
 
+@router.get("/model-catalog")
+async def get_model_catalog(_: AdminUser = Depends(get_current_admin)):
+    return await _proxy(
+        "GET",
+        "/admin/model-catalog",
+        headers=_runtime_headers(),
+    )
+
+
+@router.post("/model-catalog")
+async def create_model_catalog_item(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin),
+    request: Request = None,
+):
+    data = await _proxy(
+        "POST",
+        "/admin/model-catalog",
+        headers=_runtime_headers(),
+        json_payload=payload,
+    )
+    log_action(
+        db,
+        current_admin.id,
+        "admin.create_model_catalog_item",
+        "model_catalog",
+        str(payload.get("id") or payload.get("label") or "new"),
+        payload=payload,
+        request=request,
+    )
+    return data
+
+
+@router.put("/model-catalog/{item_id}")
+async def update_model_catalog_item(
+    item_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin),
+    request: Request = None,
+):
+    data = await _proxy(
+        "PUT",
+        f"/admin/model-catalog/{item_id}",
+        headers=_runtime_headers(),
+        json_payload=payload,
+    )
+    log_action(
+        db,
+        current_admin.id,
+        "admin.update_model_catalog_item",
+        "model_catalog",
+        item_id,
+        payload=payload,
+        request=request,
+    )
+    return data
+
+
+@router.post("/model-catalog/{item_id}/enable")
+async def enable_model_catalog_item(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin),
+    request: Request = None,
+):
+    data = await _proxy(
+        "POST",
+        f"/admin/model-catalog/{item_id}/enable",
+        headers=_runtime_headers(),
+    )
+    log_action(
+        db, current_admin.id, "admin.enable_model_catalog_item", "model_catalog", item_id, request=request
+    )
+    return data
+
+
+@router.post("/model-catalog/{item_id}/disable")
+async def disable_model_catalog_item(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin),
+    request: Request = None,
+):
+    data = await _proxy(
+        "POST",
+        f"/admin/model-catalog/{item_id}/disable",
+        headers=_runtime_headers(),
+    )
+    log_action(
+        db, current_admin.id, "admin.disable_model_catalog_item", "model_catalog", item_id, request=request
+    )
+    return data
+
+
+@router.post("/model-catalog/{item_id}/set-default")
+async def set_default_model_catalog_item(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin),
+    request: Request = None,
+):
+    data = await _proxy(
+        "POST",
+        f"/admin/model-catalog/{item_id}/set-default",
+        headers=_runtime_headers(),
+    )
+    log_action(
+        db, current_admin.id, "admin.set_default_model_catalog_item", "model_catalog", item_id, request=request
+    )
+    return data
+
+
+@router.post("/model-catalog/reorder")
+async def reorder_model_catalog(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_admin: AdminUser = Depends(get_current_admin),
+    request: Request = None,
+):
+    data = await _proxy(
+        "POST",
+        "/admin/model-catalog/reorder",
+        headers=_runtime_headers(),
+        json_payload=payload,
+    )
+    log_action(
+        db,
+        current_admin.id,
+        "admin.reorder_model_catalog",
+        "model_catalog",
+        "catalog",
+        payload=payload,
+        request=request,
+    )
+    return data
+
+
 @router.get("/runtime/qa-policy")
 async def get_runtime_qa_policy(_: AdminUser = Depends(get_current_admin)):
     return await _proxy(

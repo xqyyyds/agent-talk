@@ -159,6 +159,14 @@ function defaultForm() {
         owner_id: 0,
         is_system: false,
         avatar: "",
+        model_source: "system",
+        model_id: "",
+        custom_model: {
+            label: "",
+            base_url: "",
+            api_key: "",
+            model: "",
+        },
     };
 }
 function parseRawConfig(raw) {
@@ -219,6 +227,9 @@ function mergeForm(next) {
     form.owner_id = next.owner_id;
     form.is_system = next.is_system;
     form.avatar = next.avatar;
+    form.model_source = next.model_source;
+    form.model_id = next.model_id;
+    form.custom_model = { ...next.custom_model };
 }
 const rows = ref([]);
 const loading = ref(false);
@@ -227,6 +238,11 @@ const success = ref("");
 const optimizing = ref(false);
 const testing = ref(false);
 const saving = ref(false);
+const loadingModelCatalog = ref(false);
+const modelCatalogError = ref("");
+const modelOptions = ref([]);
+const customModelKeyMasked = ref("");
+const revealCustomApiKey = ref(false);
 const form = reactive(defaultForm());
 const formErrors = ref({});
 const optimizedPrompt = ref("");
@@ -296,8 +312,8 @@ function handleAvatarUpload(event) {
         error.value = "请选择图片文件（JPG/PNG/GIF）";
         return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-        error.value = "头像大小不能超过 5MB";
+    if (file.size > 8 * 1024 * 1024) {
+        error.value = "头像大小不能超过 8MB";
         return;
     }
     const reader = new FileReader();
@@ -327,6 +343,56 @@ function clearMessages() {
     error.value = "";
     success.value = "";
 }
+function normalizeModelCatalogPayload(data) {
+    const payload = data?.data ?? data ?? {};
+    const models = Array.isArray(payload.models)
+        ? payload.models
+        : Array.isArray(payload.selectable_models)
+            ? payload.selectable_models
+            : [];
+    modelOptions.value = models.map((item) => ({
+        id: String(item.id || ""),
+        label: String(item.label || item.id || ""),
+        provider_type: String(item.provider_type || "openai_compatible"),
+        is_default: Boolean(item.is_default),
+    }));
+    if (form.model_source === "system" &&
+        (!form.model_id || !modelOptions.value.some((item) => item.id === form.model_id))) {
+        const fallback = modelOptions.value.find((item) => item.is_default) || modelOptions.value[0];
+        form.model_id = fallback?.id || "";
+    }
+}
+async function loadModelCatalog() {
+    loadingModelCatalog.value = true;
+    modelCatalogError.value = "";
+    try {
+        const { data } = await api.getModelCatalog();
+        normalizeModelCatalogPayload(data);
+    }
+    catch (err) {
+        modelCatalogError.value =
+            err?.response?.data?.detail || err?.message || "加载系统模型列表失败";
+    }
+    finally {
+        loadingModelCatalog.value = false;
+    }
+}
+function setModelSource(source) {
+    form.model_source = source;
+    if (source === "system") {
+        customModelKeyMasked.value = "";
+        form.custom_model = {
+            label: "",
+            base_url: "",
+            api_key: "",
+            model: "",
+        };
+        if (!form.model_id) {
+            const fallback = modelOptions.value.find((item) => item.is_default) || modelOptions.value[0];
+            form.model_id = fallback?.id || "";
+        }
+    }
+}
 function resetToCreateMode() {
     editMode.value = false;
     editingAgentId.value = null;
@@ -334,6 +400,8 @@ function resetToCreateMode() {
     optimizedPrompt.value = "";
     testReply.value = "";
     formErrors.value = {};
+    customModelKeyMasked.value = "";
+    revealCustomApiKey.value = false;
     clearMessages();
 }
 function validateForm() {
@@ -368,6 +436,28 @@ function validateForm() {
     }
     if (!Number.isFinite(form.owner_id) || form.owner_id < 0) {
         nextErrors.owner_id = "归属用户 ID 不能为负数";
+    }
+    if (form.model_source === "system") {
+        if (!form.model_id.trim()) {
+            nextErrors.model_id = "请选择系统模型";
+        }
+    }
+    else {
+        if (!form.custom_model.label.trim()) {
+            nextErrors.custom_model_label = "请填写模型别名";
+        }
+        if (!form.custom_model.base_url.trim()) {
+            nextErrors.custom_model_base_url = "请填写 Base URL";
+        }
+        if (!form.custom_model.model.trim()) {
+            nextErrors.custom_model_model = "请填写模型名称";
+        }
+        if (!editMode.value && !form.custom_model.api_key.trim()) {
+            nextErrors.custom_model_api_key = "新建自定义模型时必须填写 API Key";
+        }
+        if (editMode.value && !customModelKeyMasked.value && !form.custom_model.api_key.trim()) {
+            nextErrors.custom_model_api_key = "请填写 API Key";
+        }
     }
     formErrors.value = nextErrors;
     return Object.keys(nextErrors).length === 0;
@@ -454,6 +544,16 @@ function buildPayload() {
         owner_id: form.is_system ? 0 : Math.max(0, Math.floor(form.owner_id)),
         is_system: form.is_system,
         avatar: form.avatar.trim(),
+        model_source: form.model_source,
+        model_id: form.model_source === "system" ? form.model_id.trim() : "",
+        custom_model: form.model_source === "custom"
+            ? {
+                label: form.custom_model.label.trim(),
+                base_url: form.custom_model.base_url.trim(),
+                api_key: form.custom_model.api_key.trim(),
+                model: form.custom_model.model.trim(),
+            }
+            : undefined,
     };
 }
 async function submitAgent() {
@@ -485,6 +585,8 @@ async function submitAgent() {
 }
 function editRow(row) {
     const cfg = parseRawConfig(row.raw_config);
+    const modelInfo = row.model_info || {};
+    const modelSource = row.model_source === "custom" || modelInfo.source === "custom" ? "custom" : "system";
     editMode.value = true;
     editingAgentId.value = row.id;
     mergeForm({
@@ -501,7 +603,17 @@ function editRow(row) {
         owner_id: Number(row.owner_id ?? 0),
         is_system: Boolean(row.is_system),
         avatar: row.avatar || "",
+        model_source: modelSource,
+        model_id: String(row.model_id || modelInfo.configured_model_id || modelInfo.effective_model_id || ""),
+        custom_model: {
+            label: String(modelInfo.label || ""),
+            base_url: String(modelInfo.base_url || ""),
+            api_key: "",
+            model: String(modelInfo.model || ""),
+        },
     });
+    customModelKeyMasked.value = String(modelInfo.api_key_masked || "");
+    revealCustomApiKey.value = false;
     optimizedPrompt.value = "";
     testReply.value = "";
     formErrors.value = {};
@@ -525,7 +637,9 @@ async function removeRow(row) {
         error.value = err?.response?.data?.detail || err?.message || "删除失败";
     }
 }
-onMounted(loadAgents);
+onMounted(async () => {
+    await Promise.all([loadAgents(), loadModelCatalog()]);
+});
 const __VLS_ctx = {
     ...{},
     ...{},
@@ -835,6 +949,157 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
 __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "row" },
+});
+/** @type {__VLS_StyleScopedClasses['row']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+    ...{ onClick: (...[$event]) => {
+            __VLS_ctx.setModelSource('system');
+            // @ts-ignore
+            [form, form, formErrors, formErrors, setModelSource,];
+        } },
+    type: "button",
+    ...{ class: "secondary" },
+    ...{ class: ({ 'is-active': __VLS_ctx.form.model_source === 'system' }) },
+});
+/** @type {__VLS_StyleScopedClasses['secondary']} */ ;
+/** @type {__VLS_StyleScopedClasses['is-active']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+    ...{ onClick: (...[$event]) => {
+            __VLS_ctx.setModelSource('custom');
+            // @ts-ignore
+            [form, setModelSource,];
+        } },
+    type: "button",
+    ...{ class: "secondary" },
+    ...{ class: ({ 'is-active': __VLS_ctx.form.model_source === 'custom' }) },
+});
+/** @type {__VLS_StyleScopedClasses['secondary']} */ ;
+/** @type {__VLS_StyleScopedClasses['is-active']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+    ...{ onClick: (__VLS_ctx.loadModelCatalog) },
+    type: "button",
+    ...{ class: "secondary" },
+    disabled: (__VLS_ctx.loadingModelCatalog),
+});
+/** @type {__VLS_StyleScopedClasses['secondary']} */ ;
+(__VLS_ctx.loadingModelCatalog ? "刷新中..." : "刷新模型列表");
+if (__VLS_ctx.modelCatalogError) {
+    __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+        ...{ class: "form-error" },
+    });
+    /** @type {__VLS_StyleScopedClasses['form-error']} */ ;
+    (__VLS_ctx.modelCatalogError);
+}
+if (__VLS_ctx.form.model_source === 'system') {
+    __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.select, __VLS_intrinsics.select)({
+        value: (__VLS_ctx.form.model_id),
+    });
+    __VLS_asFunctionalElement1(__VLS_intrinsics.option, __VLS_intrinsics.option)({
+        value: "",
+        disabled: true,
+    });
+    for (const [item] of __VLS_vFor((__VLS_ctx.modelOptions))) {
+        __VLS_asFunctionalElement1(__VLS_intrinsics.option, __VLS_intrinsics.option)({
+            key: (item.id),
+            value: (item.id),
+        });
+        (item.label);
+        (item.is_default ? "（默认）" : "");
+        // @ts-ignore
+        [form, form, form, loadModelCatalog, loadingModelCatalog, loadingModelCatalog, modelCatalogError, modelCatalogError, modelOptions,];
+    }
+    if (__VLS_ctx.formErrors.model_id) {
+        __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+            ...{ class: "form-error" },
+        });
+        /** @type {__VLS_StyleScopedClasses['form-error']} */ ;
+        (__VLS_ctx.formErrors.model_id);
+    }
+}
+else {
+    __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+        placeholder: "例如：我的 DeepSeek / 私有 GPT",
+        autocomplete: "off",
+    });
+    (__VLS_ctx.form.custom_model.label);
+    if (__VLS_ctx.formErrors.custom_model_label) {
+        __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+            ...{ class: "form-error" },
+        });
+        /** @type {__VLS_StyleScopedClasses['form-error']} */ ;
+        (__VLS_ctx.formErrors.custom_model_label);
+    }
+    __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+        placeholder: "https://api.example.com/v1",
+        autocomplete: "off",
+    });
+    (__VLS_ctx.form.custom_model.base_url);
+    if (__VLS_ctx.formErrors.custom_model_base_url) {
+        __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+            ...{ class: "form-error" },
+        });
+        /** @type {__VLS_StyleScopedClasses['form-error']} */ ;
+        (__VLS_ctx.formErrors.custom_model_base_url);
+    }
+    __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+        placeholder: "例如：gpt-4o-mini / deepseek-chat",
+        autocomplete: "off",
+    });
+    (__VLS_ctx.form.custom_model.model);
+    if (__VLS_ctx.formErrors.custom_model_model) {
+        __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+            ...{ class: "form-error" },
+        });
+        /** @type {__VLS_StyleScopedClasses['form-error']} */ ;
+        (__VLS_ctx.formErrors.custom_model_model);
+    }
+    __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+        ...{ class: "row" },
+    });
+    /** @type {__VLS_StyleScopedClasses['row']} */ ;
+    __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+        type: (__VLS_ctx.revealCustomApiKey ? 'text' : 'password'),
+        placeholder: "sk-...",
+        autocomplete: "new-password",
+        ...{ style: {} },
+    });
+    (__VLS_ctx.form.custom_model.api_key);
+    __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!!(__VLS_ctx.form.model_source === 'system'))
+                    return;
+                __VLS_ctx.revealCustomApiKey = !__VLS_ctx.revealCustomApiKey;
+                // @ts-ignore
+                [form, form, form, form, formErrors, formErrors, formErrors, formErrors, formErrors, formErrors, formErrors, formErrors, revealCustomApiKey, revealCustomApiKey, revealCustomApiKey,];
+            } },
+        type: "button",
+        ...{ class: "secondary" },
+    });
+    /** @type {__VLS_StyleScopedClasses['secondary']} */ ;
+    (__VLS_ctx.revealCustomApiKey ? "隐藏" : "显示");
+    if (__VLS_ctx.customModelKeyMasked) {
+        __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+            ...{ class: "muted" },
+        });
+        /** @type {__VLS_StyleScopedClasses['muted']} */ ;
+        (__VLS_ctx.customModelKeyMasked);
+    }
+    if (__VLS_ctx.formErrors.custom_model_api_key) {
+        __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+            ...{ class: "form-error" },
+        });
+        /** @type {__VLS_StyleScopedClasses['form-error']} */ ;
+        (__VLS_ctx.formErrors.custom_model_api_key);
+    }
+}
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "avatar-row" },
 });
 /** @type {__VLS_StyleScopedClasses['avatar-row']} */ ;
@@ -956,7 +1221,7 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ onClick: (...[$event]) => {
             __VLS_ctx.listFilter = 'all';
             // @ts-ignore
-            [editMode, editMode, form, form, form, form, form, form, form, form, formErrors, formErrors, handleAvatarUpload, triggerAvatarUpload, removeAvatar, optimizePrompt, optimizing, optimizing, playground, testing, testing, testQuestion, testReply, submitAgent, saving, saving, saving, resetToCreateMode, listFilter,];
+            [editMode, editMode, form, form, form, form, form, form, formErrors, formErrors, revealCustomApiKey, customModelKeyMasked, customModelKeyMasked, handleAvatarUpload, triggerAvatarUpload, removeAvatar, optimizePrompt, optimizing, optimizing, playground, testing, testing, testQuestion, testReply, submitAgent, saving, saving, saving, resetToCreateMode, listFilter,];
         } },
     ...{ class: "secondary" },
     ...{ class: ({ 'is-active': __VLS_ctx.listFilter === 'all' }) },
@@ -1024,6 +1289,7 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({
     ...{ class: "time-cell" },
 });
@@ -1063,6 +1329,8 @@ for (const [row] of __VLS_vFor((__VLS_ctx.filteredRows))) {
         (__VLS_ctx.topicMoreCount(row));
     }
     __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
+    (row.model_info?.label || row.model_id || "默认系统模型");
+    __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
     (__VLS_ctx.parseRawConfig(row.raw_config).activity_level);
     __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
     (__VLS_ctx.parseRawConfig(row.raw_config).expressiveness);
@@ -1099,7 +1367,7 @@ for (const [row] of __VLS_vFor((__VLS_ctx.filteredRows))) {
 if (__VLS_ctx.filteredRows.length === 0) {
     __VLS_asFunctionalElement1(__VLS_intrinsics.tr, __VLS_intrinsics.tr)({});
     __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({
-        colspan: "9",
+        colspan: "10",
         ...{ style: {} },
     });
 }

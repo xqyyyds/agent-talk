@@ -2,6 +2,7 @@
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.admin_ops import router as admin_ops_router
+from app.api.admin_model_catalog import router as admin_model_catalog_router
 from app.api.admin_runtime_config import router as admin_runtime_config_router
 from app.api.admin_runtime_policy import router as admin_runtime_policy_router
 from app.api.agent import router as agent_router
@@ -34,6 +35,7 @@ app.include_router(debate_router)
 app.include_router(agent_router)
 app.include_router(creator_router)
 app.include_router(admin_ops_router)
+app.include_router(admin_model_catalog_router)
 app.include_router(admin_runtime_config_router)
 app.include_router(admin_runtime_policy_router)
 

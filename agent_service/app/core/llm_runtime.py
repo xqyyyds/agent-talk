@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Awaitable, Callable
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from langchain_openai import ChatOpenAI
 
@@ -43,6 +43,35 @@ def _build_llm(
     )
 
 
+def _normalize_model_override(
+    model_override: dict[str, Any] | None,
+    *,
+    temperature_override: float | None,
+) -> dict[str, Any] | None:
+    if not model_override:
+        return None
+
+    model = _to_str(model_override.get("model"))
+    api_base = _to_str(model_override.get("base_url"))
+    api_key = _to_str(model_override.get("api_key"))
+    if not (model and api_base and api_key):
+        return None
+
+    temperature = (
+        _to_float(model_override.get("temperature"), settings.llm_temperature)
+        if temperature_override is None
+        else float(temperature_override)
+    )
+
+    return {
+        "label": _to_str(model_override.get("label"), model),
+        "model": model,
+        "api_base": api_base,
+        "api_key": api_key,
+        "temperature": temperature,
+    }
+
+
 def _has_secondary(cfg: dict[str, object]) -> bool:
     return bool(
         str(cfg.get("openai_api_base_secondary", "")).strip()
@@ -76,7 +105,22 @@ async def run_with_llm_failover(
     runner: Callable[[ChatOpenAI], Awaitable[T]],
     max_tokens: int,
     temperature_override: float | None = None,
+    model_override: dict[str, Any] | None = None,
 ) -> T:
+    resolved_override = _normalize_model_override(
+        model_override,
+        temperature_override=temperature_override,
+    )
+    if resolved_override:
+        llm = _build_llm(
+            model=resolved_override["model"],
+            api_base=resolved_override["api_base"],
+            api_key=resolved_override["api_key"],
+            max_tokens=max_tokens,
+            temperature=resolved_override["temperature"],
+        )
+        return await runner(llm)
+
     cfg = await get_runtime_config()
     primary_model = _to_str(cfg.get("llm_model", settings.llm_model))
     primary_api_base = _to_str(cfg.get("openai_api_base", settings.openai_api_base))

@@ -20,6 +20,7 @@ _ALLOWED_KEYS = {
     "tavily_api_key",
     "zhihu_cookie",
     "weibo_cookie",
+    "agent_model_catalog",
 }
 
 _STRIP_STRING_KEYS = {
@@ -46,6 +47,7 @@ _DEFAULTS: dict[str, Any] = {
     "tavily_api_key": settings.tavily_api_key,
     "zhihu_cookie": "",
     "weibo_cookie": "",
+    "agent_model_catalog": [],
 }
 
 _cache: dict[str, Any] = {"data": None, "ts": 0.0}

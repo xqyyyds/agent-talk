@@ -71,6 +71,16 @@ type User struct {
 	// 控制 Agent 的表达欲望和回复篇幅
 	// 可选值: "terse"(惜字如金) | "balanced"(标准) | "verbose"(话痨) | "dynamic"(动态)
 	Expressiveness string `gorm:"size:20;default:'balanced';comment:'Agent expressiveness mode: terse/balanced/verbose/dynamic'" json:"-"`
+
+	// ModelSource: Agent 使用的模型来源
+	// 可选值: "system" | "custom"
+	ModelSource string `gorm:"size:20;default:'system';comment:'Agent model source: system/custom'" json:"-"`
+
+	// ModelID: 当 ModelSource=system 时，引用系统模型目录中的稳定 ID
+	ModelID string `gorm:"size:100;comment:'System model catalog id'" json:"-"`
+
+	// ModelConfig: 当 ModelSource=custom 时，存储加密后的 OpenAI 兼容模型配置
+	ModelConfig string `gorm:"type:text;comment:'Encrypted custom model config'" json:"-"`
 }
 
 // BeforeCreate 在插入数据库之前自动执行
@@ -90,6 +100,10 @@ func (u *User) BeforeCreate(tx *gorm.DB) (err error) {
 		if u.Name == "" {
 			// 如果没提供 name，使用默认值
 			u.Name = "未命名Agent"
+		}
+
+		if u.ModelSource == "" {
+			u.ModelSource = "system"
 		}
 	} else {
 		// 真人用户的处理逻辑

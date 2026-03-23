@@ -6,7 +6,7 @@ import { useToast } from "vue-toastification";
 import { getAgent } from "@/api/agent";
 import type { AgentResponse } from "@/api/types";
 import AvatarImage from "@/components/AvatarImage.vue";
-import { getStylePresetLabel } from "@/utils/agentMeta";
+import { getAgentModelLabel, getStylePresetLabel } from "@/utils/agentMeta";
 
 const route = useRoute();
 const router = useRouter();
@@ -15,6 +15,7 @@ const toast = useToast();
 const agentId = Number(route.params.id);
 const agent = ref<AgentResponse | null>(null);
 const loading = ref(true);
+const showSystemPrompt = ref(false);
 
 const avatarUrl = computed(() => {
   if (!agent.value) return "";
@@ -31,6 +32,7 @@ const activityLabel = computed(() => {
 const styleLabel = computed(() =>
   getStylePresetLabel(agent.value?.raw_config?.style_tag || ""),
 );
+const modelLabel = computed(() => getAgentModelLabel(agent.value?.model_info));
 
 async function loadAgent() {
   loading.value = true;
@@ -63,13 +65,23 @@ async function copyApiKey() {
   }
 }
 
+async function copySystemPrompt() {
+  if (!agent.value?.system_prompt) return;
+  try {
+    await navigator.clipboard.writeText(agent.value.system_prompt);
+    toast.success("系统提示词已复制");
+  } catch {
+    toast.error("复制失败，请手动复制");
+  }
+}
+
 onMounted(() => {
   void loadAgent();
 });
 </script>
 
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 px-4 py-8">
+  <div class="min-h-screen bg-[#f5f7fa] px-4 py-8">
     <div v-if="loading" class="flex items-center justify-center py-20 text-gray-600">加载中...</div>
 
     <div v-else-if="agent" class="mx-auto max-w-4xl">
@@ -129,6 +141,40 @@ onMounted(() => {
             <p class="leading-relaxed text-gray-700">{{ agent.raw_config.bio || "暂无" }}</p>
           </section>
 
+          <section v-if="agent.system_prompt">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 class="text-lg font-semibold text-gray-900">系统提示词</h2>
+                <p class="mt-1 text-sm text-gray-500">
+                  公开展示该 Agent 的系统提示词，方便了解它的行为设定与回答风格。
+                </p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button
+                  class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 transition hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900"
+                  @click="showSystemPrompt = !showSystemPrompt"
+                >
+                  {{ showSystemPrompt ? "收起" : "展开查看" }}
+                </button>
+                <button
+                  v-if="showSystemPrompt"
+                  class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white transition hover:bg-blue-700"
+                  @click="copySystemPrompt"
+                >
+                  复制
+                </button>
+              </div>
+            </div>
+            <div
+              v-if="showSystemPrompt"
+              class="rounded-xl border border-gray-200 bg-gray-50 p-5"
+            >
+              <pre
+                class="font-sans whitespace-pre-wrap break-words text-sm leading-7 text-gray-700"
+              >{{ agent.system_prompt }}</pre>
+            </div>
+          </section>
+
           <section>
             <h2 class="mb-3 text-lg font-semibold text-gray-900">擅长话题</h2>
             <div class="flex flex-wrap gap-2">
@@ -147,6 +193,12 @@ onMounted(() => {
               <h3 class="mb-2 font-semibold text-gray-900">人设风格</h3>
               <div class="rounded-lg bg-purple-50 px-4 py-2 text-purple-700">
                 {{ styleLabel || "未设置" }}
+              </div>
+            </div>
+            <div>
+              <h3 class="mb-2 font-semibold text-gray-900">使用模型</h3>
+              <div class="rounded-lg bg-emerald-50 px-4 py-2 text-emerald-700">
+                {{ modelLabel || "默认系统模型" }}
               </div>
             </div>
             <div>
