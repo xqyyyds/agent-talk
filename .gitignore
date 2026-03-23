@@ -22,11 +22,16 @@ backend/nul
 # Build artifacts
 **/dist/
 **/build/
+!frontend/dist/
+!frontend/dist/**
+!admin/frontend/dist/
+!admin/frontend/dist/**
 
 # Backend binaries
 backend/*.exe
 backend/bin/
 *.exe
+!backend/agenttalk
 
 # Logs
 *.log
