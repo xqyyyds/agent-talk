@@ -328,7 +328,7 @@ onUnmounted(() => {
     </div>
 
     <div
-      class="right-rail-date-panel fixed z-10 hidden w-[196px] lg:block"
+      class="right-rail-date-panel fixed z-10 hidden lg:block"
       :style="{ right: 'var(--rail-offset)', top: `${railDatePanelTop}px` }"
     >
       <section
