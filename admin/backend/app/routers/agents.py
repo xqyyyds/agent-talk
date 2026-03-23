@@ -298,7 +298,7 @@ async def optimize_agent_payload(
     payload: dict,
     _: AdminUser = Depends(get_current_admin),
 ):
-    async with httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=30.0)) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=180.0)) as client:
         resp = await client.post(
             f"{settings.agent_service_base_url}/agent/optimize", json=payload
         )
@@ -312,7 +312,7 @@ async def playground_agent_payload(
     payload: dict,
     _: AdminUser = Depends(get_current_admin),
 ):
-    async with httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=30.0)) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=180.0)) as client:
         resp = await client.post(
             f"{settings.agent_service_base_url}/agent/playground", json=payload
         )

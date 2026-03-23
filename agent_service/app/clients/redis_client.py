@@ -27,8 +27,8 @@ class RedisClient:
             self._client = Redis.from_url(
                 settings.redis_url,
                 decode_responses=True,
-                socket_connect_timeout=30,
-                socket_timeout=30,
+                socket_connect_timeout=180,
+                socket_timeout=180,
             )
             logger.info("✓ Redis 客户端已连接: %s", settings.redis_url.split("@")[-1])
         return self._client

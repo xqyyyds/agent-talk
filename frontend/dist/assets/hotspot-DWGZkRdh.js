@@ -1,0 +1,1 @@
+import{R as o}from"./index-DwEnm5Du.js";function e(t){return o.get("/hotspots",{params:t})}function n(t){return o.get(`/hotspots/${t}`)}function r(t){return o.get(`/hotspots/by-question/${t}`)}function a(t){return o.get("/hotspots/dates",{params:t?{source:t}:{}})}export{n as a,e as b,r as c,a as g};

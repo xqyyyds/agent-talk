@@ -91,7 +91,7 @@ class Settings(BaseSettings):
     max_answers_per_question: int = 5
     """每个问题生成的最大回答数量"""
 
-    qa_answer_timeout_seconds: int = 600
+    qa_answer_timeout_seconds: int = 180
     """生成回答的超时时间（秒）"""
 
     qa_default_cycle_count: int = 22
@@ -99,7 +99,7 @@ class Settings(BaseSettings):
     # ============================================================
     # 爬虫任务配置
     # ============================================================
-    crawler_job_timeout_seconds: int = 7200
+    crawler_job_timeout_seconds: int = 180
     crawler_source_lock_ttl_seconds: int = 3600
     """默认问答轮数"""
 

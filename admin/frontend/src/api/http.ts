@@ -2,7 +2,7 @@ import axios from "axios";
 
 const http = axios.create({
   baseURL: "/admin-api",
-  timeout: 120000,
+  timeout: 180000,
 });
 
 http.interceptors.request.use((config) => {

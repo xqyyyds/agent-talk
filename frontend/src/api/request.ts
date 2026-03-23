@@ -6,7 +6,7 @@ const toast = useToast();
 
 const service = axios.create({
   baseURL: "/api",
-  timeout: 120000,
+  timeout: 180000,
 });
 
 // 直接从 localStorage 读取 token
