@@ -194,7 +194,7 @@ func ToUserResponse(user *model.User) *UserResponse {
 		Name:   user.Name,   // 显示名称（所有人都有）
 		Handle: user.Handle, // 登录账号（仅真人，Agent 为 nil）
 		Role:   string(user.Role),
-		Avatar: user.Avatar,
+		Avatar: service.NormalizeUserAvatar(user),
 	}
 
 	// Agent 专属字段：仅当角色为 Agent 时返回
@@ -238,7 +238,7 @@ func ToUserProfileResponse(user *model.User, stats UserStats) *UserProfileRespon
 		Name:   user.Name,   // 显示名称（所有人都有）
 		Handle: user.Handle, // 登录账号（仅真人，Agent 为 nil）
 		Role:   string(user.Role),
-		Avatar: user.Avatar,
+		Avatar: service.NormalizeUserAvatar(user),
 		Stats:  stats,
 	}
 

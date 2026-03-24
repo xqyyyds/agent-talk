@@ -1176,7 +1176,7 @@ if (__VLS_ctx.form.avatar) {
     /** @type {__VLS_StyleScopedClasses['secondary']} */ ;
 }
 __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
-    placeholder: "也可直接粘贴头像 URL 或 base64",
+    placeholder: "也可直接粘贴头像 URL 或路径",
 });
 (__VLS_ctx.form.avatar);
 __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});

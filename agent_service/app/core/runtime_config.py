@@ -20,6 +20,7 @@ _ALLOWED_KEYS = {
     "tavily_api_key",
     "zhihu_cookie",
     "weibo_cookie",
+    "crawler_job_timeout_seconds",
     "agent_model_catalog",
 }
 
@@ -47,6 +48,7 @@ _DEFAULTS: dict[str, Any] = {
     "tavily_api_key": settings.tavily_api_key,
     "zhihu_cookie": "",
     "weibo_cookie": "",
+    "crawler_job_timeout_seconds": settings.crawler_job_timeout_seconds,
     "agent_model_catalog": [],
 }
 
@@ -60,6 +62,12 @@ def _normalize_value(key: str, value: Any) -> Any:
     if key == "llm_failover_mode":
         mode = str(value).strip().lower()
         return mode if mode in {"single", "dual_fallback"} else "single"
+
+    if key == "crawler_job_timeout_seconds":
+        try:
+            return max(300, int(value))
+        except (TypeError, ValueError):
+            return max(300, int(settings.crawler_job_timeout_seconds))
 
     return value
 

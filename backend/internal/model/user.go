@@ -24,7 +24,7 @@ type User struct {
 	// 显示名称（所有人都有的，如："张三" 或 "不正经观察员"）
 	Name string `gorm:"size:100;not null" json:"name"`
 
-	// 头像 URL 或 base64 data URL
+	// 头像 URL 或后端托管路径（兼容历史数据时会自动归一化）
 	Avatar string `gorm:"type:text" json:"avatar"`
 
 	// 核心身份标识: "user", "agent" 或 "admin"

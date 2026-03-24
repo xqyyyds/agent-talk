@@ -61,14 +61,27 @@ class CrawlerJobManager:
     def __init__(self) -> None:
         self._active_tasks: dict[str, asyncio.Task] = {}
         self._lock = asyncio.Lock()
-        self._job_timeout_seconds = max(
-            300, int(getattr(settings, "crawler_job_timeout_seconds", 1800))
+        self._default_job_timeout_seconds = max(
+            300, int(getattr(settings, "crawler_job_timeout_seconds", 900))
         )
-        self._lock_ttl_seconds = max(
-            self._job_timeout_seconds + 600,
+        self._default_lock_ttl_seconds = max(
+            self._default_job_timeout_seconds + 600,
             int(getattr(settings, "crawler_source_lock_ttl_seconds", 3600)),
         )
         self._scripts_dir = Path(__file__).resolve().parents[2] / "scripts"
+
+    async def _resolve_job_timeout_seconds(self) -> int:
+        runtime_cfg = await get_runtime_config()
+        value = runtime_cfg.get(
+            "crawler_job_timeout_seconds", self._default_job_timeout_seconds
+        )
+        try:
+            return max(300, int(value))
+        except (TypeError, ValueError):
+            return self._default_job_timeout_seconds
+
+    def _resolve_lock_ttl_seconds(self, job_timeout_seconds: int) -> int:
+        return max(job_timeout_seconds + 600, self._default_lock_ttl_seconds)
 
     async def _redis(self) -> Redis:
         return Redis.from_url(settings.redis_url, decode_responses=True)
@@ -137,7 +150,9 @@ class CrawlerJobManager:
             if lock_owner == job_id:
                 continue
 
-            timeout_seconds = int(job.get("timeout_seconds") or self._job_timeout_seconds)
+            timeout_seconds = int(
+                job.get("timeout_seconds") or self._default_job_timeout_seconds
+            )
             started_at = _parse_iso(job.get("started_at")) or _parse_iso(job.get("created_at"))
             if started_at is None:
                 started_at = now
@@ -186,11 +201,13 @@ class CrawlerJobManager:
         now = _now_iso()
         lock_key = self._source_running_key(source)
         lock_acquired = False
+        timeout_seconds = await self._resolve_job_timeout_seconds()
+        lock_ttl_seconds = self._resolve_lock_ttl_seconds(timeout_seconds)
 
         redis = await self._redis()
         try:
             await self._reconcile_stale_jobs(redis, source=source)
-            locked = await redis.set(lock_key, job_id, nx=True, ex=self._lock_ttl_seconds)
+            locked = await redis.set(lock_key, job_id, nx=True, ex=lock_ttl_seconds)
             if not locked:
                 running_job_id = await redis.get(lock_key)
                 raise CrawlerConflictError(source, running_job_id or "unknown")
@@ -207,7 +224,7 @@ class CrawlerJobManager:
                 "exit_code": None,
                 "duration_seconds": None,
                 "error_message": "",
-                "timeout_seconds": self._job_timeout_seconds,
+                "timeout_seconds": timeout_seconds,
                 "updated_at": now,
             }
             await self._update_job(redis, job_id, job)
@@ -225,13 +242,26 @@ class CrawlerJobManager:
             await redis.aclose()
 
         async with self._lock:
-            task = asyncio.create_task(self._run_job(job_id, source, script_name, script_path))
+            task = asyncio.create_task(
+                self._run_job(
+                    job_id,
+                    source,
+                    script_name,
+                    script_path,
+                    timeout_seconds,
+                )
+            )
             self._active_tasks[job_id] = task
 
         return job
 
     async def _run_job(
-        self, job_id: str, source: str, script_name: str, script_path: Path
+        self,
+        job_id: str,
+        source: str,
+        script_name: str,
+        script_path: Path,
+        timeout_seconds: int,
     ) -> None:
         start_ts = datetime.now(timezone.utc).timestamp()
         redis = await self._redis()
@@ -284,7 +314,7 @@ class CrawlerJobManager:
 
             timed_out = False
             try:
-                await asyncio.wait_for(process.wait(), timeout=self._job_timeout_seconds)
+                await asyncio.wait_for(process.wait(), timeout=timeout_seconds)
             except asyncio.TimeoutError:
                 timed_out = True
                 with suppress(Exception):

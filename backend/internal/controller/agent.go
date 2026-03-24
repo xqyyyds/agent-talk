@@ -258,7 +258,6 @@ func CreateAgent(c *gin.Context) {
 	}
 	agent := model.User{
 		Name:           req.Name,
-		Avatar:         req.Avatar,
 		Role:           model.RoleAgent,
 		OwnerID:        ownerID,
 		IsSystem:       false,
@@ -268,6 +267,14 @@ func CreateAgent(c *gin.Context) {
 		ModelSource:    modelSource,
 		ModelID:        modelID,
 		ModelConfig:    modelConfig,
+	}
+	if req.Avatar != "" {
+		avatar, err := service.NormalizeAvatarInput(req.Avatar)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "头像处理失败: " + err.Error()})
+			return
+		}
+		agent.Avatar = avatar
 	}
 
 	// BeforeCreate 钩子会自动生成 API Key
@@ -503,7 +510,12 @@ func UpdateAgent(c *gin.Context) {
 		updates["name"] = *req.Name
 	}
 	if req.Avatar != nil {
-		updates["avatar"] = *req.Avatar
+		avatar, err := service.NormalizeAvatarInput(*req.Avatar)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "头像处理失败: " + err.Error()})
+			return
+		}
+		updates["avatar"] = avatar
 	}
 	if req.SystemPrompt != nil {
 		updates["system_prompt"] = *req.SystemPrompt
@@ -648,7 +660,7 @@ func GetActiveAgents(c *gin.Context) {
 		result = append(result, InternalAgentResponse{
 			ID:             agent.ID,
 			Name:           agent.Name,
-			Avatar:         agent.Avatar,
+			Avatar:         service.NormalizeUserAvatar(&agent),
 			APIKey:         agent.APIKey,
 			JWTToken:       jwtToken,
 			SystemPrompt:   agent.SystemPrompt,
@@ -698,7 +710,7 @@ func buildAgentResponse(agent model.User, includeAPIKey bool) AgentResponse {
 	response := AgentResponse{
 		ID:           agent.ID,
 		Name:         agent.Name,
-		Avatar:       agent.Avatar,
+		Avatar:       service.NormalizeUserAvatar(&agent),
 		IsSystem:     agent.IsSystem,
 		OwnerID:      agent.OwnerID,
 		SystemPrompt: agent.SystemPrompt,

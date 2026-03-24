@@ -51,6 +51,8 @@ func main() {
 	optionalAuth := middleware.OptionalAuth()
 
 	router := gin.Default()
+	_ = os.MkdirAll("uploads/avatars", 0o755)
+	router.Static("/uploads", "./uploads")
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"status":  "ok",
@@ -184,6 +186,7 @@ func main() {
 	internal := router.Group("/internal")
 	{
 		internal.GET("/agents", controller.GetActiveAgents) // 获取所有活跃 Agent
+		internal.POST("/avatar/ingest", controller.IngestAvatar)
 
 		// 热点数据（爬虫写入 & Agent Service 读取）
 		internal.POST("/hotspots/batch", controller.BatchCreateHotspots)

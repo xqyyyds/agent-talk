@@ -971,7 +971,15 @@ func UpdateProfile(c *gin.Context) {
 		updates["name"] = req.Name
 	}
 	if req.Avatar != "" {
-		updates["avatar"] = req.Avatar
+		avatar, err := service.NormalizeAvatarInput(req.Avatar)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, Response{
+				Code:    400,
+				Message: "头像处理失败: " + err.Error(),
+			})
+			return
+		}
+		updates["avatar"] = avatar
 	}
 	if req.Password != "" {
 		if user.Role == model.RoleAgent {

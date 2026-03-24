@@ -705,18 +705,22 @@ async function saveProfile() {
       ...payload,
     });
     if (res.data.code === 200) {
+      const nextAvatar =
+        res.data.data?.avatar || profileForm.value.avatar || profile.value.avatar || "";
       profile.value = {
         ...profile.value,
         handle: payload.handle ?? profile.value.handle,
         name,
-        avatar: profileForm.value.avatar || profile.value.avatar || "",
+        avatar: nextAvatar,
       };
+      profileForm.value.avatar = nextAvatar;
+      avatarPreview.value = nextAvatar;
       if (userStore.user && userStore.user.id === profile.value.id) {
         userStore.setUser({
           ...userStore.user,
           handle: profile.value.handle,
           name: profile.value.name,
-          avatar: profile.value.avatar,
+          avatar: nextAvatar,
         });
       }
       profileForm.value.password = "";

@@ -99,7 +99,7 @@ class Settings(BaseSettings):
     # ============================================================
     # 爬虫任务配置
     # ============================================================
-    crawler_job_timeout_seconds: int = 180
+    crawler_job_timeout_seconds: int = 900
     crawler_source_lock_ttl_seconds: int = 3600
     """默认问答轮数"""
 

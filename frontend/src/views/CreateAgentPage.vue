@@ -691,7 +691,7 @@ onMounted(() => {
               <p class="mt-2 text-xs text-gray-500">
                 支持 JPG/PNG/GIF，最大 5MB
               </p>
-              <p class="text-xs text-gray-400">不上传则根据名称自动生成</p>
+              <p class="text-xs text-gray-400">不上传则根据名称自动生成，保存时会转成头像路径</p>
             </div>
           </div>
         </div>

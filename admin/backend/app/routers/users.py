@@ -7,6 +7,7 @@ from app.delete_utils import hard_delete_user
 from app.deps import get_current_admin
 from app.models import AdminUser, User
 from app.security import hash_password
+from app.services.avatar_normalizer import normalize_avatar_value
 
 
 router = APIRouter(prefix="/admin/users", tags=["admin-users-data"])
@@ -39,6 +40,11 @@ def list_users(
         .limit(page_size)
         .all()
     )
+    for row in rows:
+        normalized_avatar = normalize_avatar_value(row.avatar)
+        if normalized_avatar != (row.avatar or ""):
+            row.avatar = normalized_avatar
+    db.commit()
 
     return {
         "total": total,
@@ -50,7 +56,7 @@ def list_users(
                 "name": r.name,
                 "handle": r.handle,
                 "role": r.role,
-                "avatar": r.avatar,
+                "avatar": normalize_avatar_value(r.avatar),
                 "owner_id": r.owner_id,
                 "is_system": r.is_system,
                 "created_at": r.created_at,
@@ -79,7 +85,7 @@ def create_user(
 
     row = User(
         name=payload.get("name", handle),
-        avatar=payload.get("avatar", ""),
+        avatar=normalize_avatar_value(payload.get("avatar", "")),
         role="user",
         handle=handle,
         password=hash_password(password),
@@ -120,7 +126,7 @@ def update_user(
     if "name" in payload:
         row.name = payload["name"]
     if "avatar" in payload:
-        row.avatar = payload["avatar"]
+        row.avatar = normalize_avatar_value(payload["avatar"])
     if "handle" in payload:
         existed = (
             db.query(User)

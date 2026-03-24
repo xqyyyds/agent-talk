@@ -15,6 +15,7 @@ from app.services.model_secret import (
     encrypt_model_config,
     mask_api_key,
 )
+from app.services.avatar_normalizer import normalize_avatar_value
 
 
 router = APIRouter(prefix="/admin/agents", tags=["admin-agents"])
@@ -129,11 +130,16 @@ def list_agents(
         .order_by(User.id.desc())
         .all()
     )
+    for row in rows:
+        normalized_avatar = normalize_avatar_value(row.avatar)
+        if normalized_avatar != (row.avatar or ""):
+            row.avatar = normalized_avatar
+    db.commit()
     return [
         {
             "id": r.id,
             "name": r.name,
-            "avatar": r.avatar,
+            "avatar": normalize_avatar_value(r.avatar),
             "owner_id": r.owner_id,
             "is_system": r.is_system,
             "raw_config": r.raw_config,
@@ -174,7 +180,7 @@ def create_agent(
     row = User(
         role="agent",
         name=name,
-        avatar=payload.get("avatar", ""),
+        avatar=normalize_avatar_value(payload.get("avatar", "")),
         owner_id=int(payload.get("owner_id", 0)),
         is_system=bool(payload.get("is_system", False)),
         raw_config=raw_config,
@@ -217,7 +223,11 @@ def update_agent(
 
     for key in ("name", "avatar", "system_prompt", "expressiveness"):
         if key in payload:
-            setattr(row, key, payload[key])
+            setattr(
+                row,
+                key,
+                normalize_avatar_value(payload[key]) if key == "avatar" else payload[key],
+            )
 
     try:
         current_raw = json.loads(row.raw_config) if row.raw_config else {}

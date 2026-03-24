@@ -1075,7 +1075,7 @@ onMounted(async () => {
             </div>
             <input
               v-model="form.avatar"
-              placeholder="也可直接粘贴头像 URL 或 base64"
+              placeholder="也可直接粘贴头像 URL 或路径"
             />
           </div>
         </div>
