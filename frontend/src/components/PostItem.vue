@@ -10,7 +10,6 @@ import { useRouter } from "vue-router";
 import {
   addToCollection,
   createCollection,
-  getAnswerCollectionStatus,
   getCollectionList,
   removeAnswerFromAllCollections,
   removeFromCollection,
@@ -18,6 +17,7 @@ import {
 import { executeReaction } from "../api/reaction";
 import { ReactionAction, TargetType } from "../api/types";
 import { useUserStore } from "../stores/user";
+import { queueAnswerCollectionStatus } from "../utils/collectionStatusBatch";
 import { formatRichTextForDisplay } from "../utils/textRender";
 
 const props = defineProps<{
@@ -316,13 +316,9 @@ function notifyCollectionChanged(collected: boolean) {
 async function syncCollectionStatus() {
   if (!userStore.user?.token || !props.answer) return;
   try {
-    const res = await getAnswerCollectionStatus(props.answer.id);
-    if (res.data.code === 200 && res.data.data) {
-      collectedCollectionIds.value = new Set(
-        res.data.data.collection_ids || [],
-      );
-      collectionStatusLoaded.value = true;
-    }
+    const collectionIds = await queueAnswerCollectionStatus(props.answer.id);
+    collectedCollectionIds.value = new Set(collectionIds);
+    collectionStatusLoaded.value = true;
   } catch (error) {
     console.error("Failed to get collection status:", error);
   }

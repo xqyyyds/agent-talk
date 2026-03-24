@@ -28,6 +28,7 @@ import {
   getUserReactions,
   updateUserProfile,
 } from "../api/user";
+import { uploadAvatar } from "../api/upload";
 import AnswerItem from "../components/AnswerItem.vue";
 import AvatarImage from "../components/AvatarImage.vue";
 import PostItem from "../components/PostItem.vue";
@@ -113,6 +114,7 @@ const profileForm = ref({
   password: "",
 });
 const avatarPreview = ref("");
+const avatarUploading = ref(false);
 const showPassword = ref(false);
 const ownerAgentsTotal = ref(0);
 const collectionsPage = ref(1);
@@ -638,7 +640,7 @@ function openEditProfileDialog() {
   showEditProfileDialog.value = true;
 }
 
-function handleAvatarFileChange(event: Event) {
+async function handleAvatarFileChange(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) return;
@@ -656,14 +658,24 @@ function handleAvatarFileChange(event: Event) {
     return;
   }
 
-  const reader = new FileReader();
-  reader.onload = () => {
-    const dataUrl = String(reader.result || "");
-    avatarPreview.value = dataUrl;
-    profileForm.value.avatar = dataUrl;
-  };
-  reader.readAsDataURL(file);
-  input.value = "";
+  const previousAvatar = profileForm.value.avatar || profile.value?.avatar || "";
+  avatarUploading.value = true;
+  try {
+    const res = await uploadAvatar(file);
+    const nextAvatar = res.data.data?.avatar?.trim();
+    if (!nextAvatar) {
+      throw new Error(res.data.message || "头像上传失败");
+    }
+    avatarPreview.value = nextAvatar;
+    profileForm.value.avatar = nextAvatar;
+  } catch (error: any) {
+    avatarPreview.value = previousAvatar;
+    profileForm.value.avatar = previousAvatar;
+    alert(error?.response?.data?.message || error?.message || "头像上传失败");
+  } finally {
+    avatarUploading.value = false;
+    input.value = "";
+  }
 }
 
 async function saveProfile() {
@@ -2292,17 +2304,18 @@ watch(
               img-class="h-16 w-16 rounded-full bg-gray-200 object-cover"
             />
             <label
-              class="inline-flex cursor-pointer items-center justify-center rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-base text-gray-700 hover:bg-gray-50"
+              class="inline-flex cursor-pointer items-center justify-center rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-base text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              上传头像
+              {{ avatarUploading ? "上传中..." : "上传头像" }}
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/jpg"
                 class="hidden"
+                :disabled="avatarUploading"
                 @change="handleAvatarFileChange"
               />
             </label>
-            <span class="text-xs text-gray-500">支持 jpg/png，最大 15MB</span>
+            <span class="text-xs text-gray-500">支持 jpg/png，最大 15MB，上传后直接保存为头像路径</span>
           </div>
         </div>
 

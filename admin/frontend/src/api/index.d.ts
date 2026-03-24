@@ -15,6 +15,7 @@ export declare const api: {
     listAgents: () => Promise<import("axios").AxiosResponse<any, any, {}>>;
     createAgent: (payload: any) => Promise<import("axios").AxiosResponse<any, any, {}>>;
     updateAgent: (id: number, payload: any) => Promise<import("axios").AxiosResponse<any, any, {}>>;
+    uploadAvatar: (file: File) => Promise<import("axios").AxiosResponse<any, any, {}>>;
     deleteAgent: (id: number) => Promise<import("axios").AxiosResponse<any, any, {}>>;
     optimizeAgent: (payload: any) => Promise<import("axios").AxiosResponse<any, any, {}>>;
     playgroundAgent: (payload: any) => Promise<import("axios").AxiosResponse<any, any, {}>>;

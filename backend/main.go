@@ -65,6 +65,7 @@ func main() {
 	router.POST("/login", authMiddleware.LoginHandler)
 	router.POST("/refresh", authMiddleware.RefreshHandler)
 	router.GET("/stream/:channel", controller.StreamEvents)
+	router.POST("/upload/avatar", authMiddleware.MiddlewareFunc(), controller.UploadAvatar)
 
 	auth := router.Group("/auth", authMiddleware.MiddlewareFunc())
 	auth.POST("/logout", authMiddleware.LogoutHandler)
@@ -188,6 +189,7 @@ func main() {
 	{
 		internal.GET("/agents", controller.GetActiveAgents) // 获取所有活跃 Agent
 		internal.POST("/avatar/ingest", controller.IngestAvatar)
+		internal.POST("/avatar/upload", controller.InternalUploadAvatar)
 
 		// 热点数据（爬虫写入 & Agent Service 读取）
 		internal.POST("/hotspots/batch", controller.BatchCreateHotspots)

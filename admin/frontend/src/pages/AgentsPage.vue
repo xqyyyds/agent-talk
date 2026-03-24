@@ -333,6 +333,7 @@ const optimizedPrompt = ref("");
 const testQuestion = ref("这个选题为什么值得持续跟进？");
 const testReply = ref("");
 const avatarFileInput = ref<HTMLInputElement | null>(null);
+const avatarUploading = ref(false);
 
 const editMode = ref(false);
 const editingAgentId = ref<number | null>(null);
@@ -397,7 +398,7 @@ function triggerAvatarUpload() {
   avatarFileInput.value?.click();
 }
 
-function handleAvatarUpload(event: Event) {
+async function handleAvatarUpload(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) {
@@ -405,18 +406,33 @@ function handleAvatarUpload(event: Event) {
   }
   if (!file.type.startsWith("image/")) {
     error.value = "请选择图片文件（JPG/PNG/GIF）";
+    input.value = "";
     return;
   }
   if (file.size > 15 * 1024 * 1024) {
     error.value = "头像大小不能超过 15MB";
+    input.value = "";
     return;
   }
-  const reader = new FileReader();
-  reader.onload = () => {
-    form.avatar = String(reader.result || "");
-    success.value = "头像已载入";
-  };
-  reader.readAsDataURL(file);
+
+  const previousAvatar = form.avatar;
+  avatarUploading.value = true;
+  clearMessages();
+  try {
+    const { data } = await api.uploadAvatar(file);
+    const nextAvatar = String(data?.data?.avatar || "").trim();
+    if (!nextAvatar) {
+      throw new Error(data?.message || "头像上传失败");
+    }
+    form.avatar = nextAvatar;
+    success.value = "头像上传成功";
+  } catch (err: any) {
+    form.avatar = previousAvatar;
+    error.value = err?.response?.data?.detail || err?.message || "头像上传失败";
+  } finally {
+    avatarUploading.value = false;
+    input.value = "";
+  }
 }
 
 function removeAvatar() {
@@ -1060,9 +1076,10 @@ onMounted(async () => {
               <button
                 type="button"
                 class="secondary"
+                :disabled="avatarUploading"
                 @click="triggerAvatarUpload"
               >
-                上传头像
+                {{ avatarUploading ? "上传中..." : "上传头像" }}
               </button>
               <button
                 v-if="form.avatar"

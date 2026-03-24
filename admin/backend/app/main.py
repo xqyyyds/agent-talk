@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import Base, engine
 from app.models import AdminUser
-from app.routers import auth, admins, dashboard, users, agents, content, ops, stream
+from app.routers import auth, admins, dashboard, users, agents, content, ops, stream, uploads
 from app.security import hash_password
 
 
@@ -74,3 +74,4 @@ app.include_router(agents.router)
 app.include_router(content.router)
 app.include_router(ops.router)
 app.include_router(stream.router)
+app.include_router(uploads.router)

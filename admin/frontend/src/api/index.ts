@@ -26,6 +26,13 @@ export const api = {
   createAgent: (payload: any) => http.post("/admin/agents", payload),
   updateAgent: (id: number, payload: any) =>
     http.patch(`/admin/agents/${id}`, payload),
+  uploadAvatar: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return http.post("/admin/uploads/avatar", formData, {
+      timeout: 180000,
+    });
+  },
   deleteAgent: (id: number) => http.delete(`/admin/agents/${id}`),
   optimizeAgent: (payload: any) =>
     http.post("/admin/agents/optimize", payload, { timeout: 180000 }),

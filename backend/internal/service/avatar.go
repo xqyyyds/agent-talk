@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,8 +28,33 @@ var avatarMimeExtensions = map[string]string{
 	"image/webp":    ".webp",
 }
 
+var avatarFileExtensions = map[string]string{
+	".gif":  ".gif",
+	".jpeg": ".jpg",
+	".jpg":  ".jpg",
+	".png":  ".png",
+	".svg":  ".svg",
+	".webp": ".webp",
+}
+
 func NormalizeAvatarInput(raw string) (string, error) {
 	return normalizeAvatarValue(strings.TrimSpace(raw))
+}
+
+func PersistAvatarFile(payload []byte, originalName string, contentType string) (string, error) {
+	if len(payload) == 0 {
+		return "", errors.New("empty avatar payload")
+	}
+	if len(payload) > maxAvatarSizeBytes {
+		return "", fmt.Errorf("avatar payload exceeds %d bytes", maxAvatarSizeBytes)
+	}
+
+	ext, err := detectAvatarExtension(payload, originalName, contentType)
+	if err != nil {
+		return "", err
+	}
+
+	return persistAvatarBytes(payload, ext)
 }
 
 func NormalizeUserAvatar(user *model.User) string {
@@ -87,6 +113,37 @@ func persistAvatarDataURL(raw string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("decode avatar data: %w", err)
 	}
+	return persistAvatarBytes(payload, ext)
+}
+
+func splitDataURL(raw string) (mimeType string, encoded string, err error) {
+	comma := strings.Index(raw, ",")
+	if comma <= 0 {
+		return "", "", errors.New("invalid data url")
+	}
+
+	header := raw[:comma]
+	encoded = raw[comma+1:]
+	if !strings.HasPrefix(header, "data:") || !strings.HasSuffix(header, ";base64") {
+		return "", "", errors.New("avatar must be base64 data url")
+	}
+
+	mimeType = strings.TrimSuffix(strings.TrimPrefix(header, "data:"), ";base64")
+	if mimeType == "" {
+		return "", "", errors.New("missing avatar mime type")
+	}
+	return mimeType, encoded, nil
+}
+
+func randomFilename(ext string) (string, error) {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate avatar filename: %w", err)
+	}
+	return fmt.Sprintf("%x%s", buf, ext), nil
+}
+
+func persistAvatarBytes(payload []byte, ext string) (string, error) {
 	if len(payload) == 0 {
 		return "", errors.New("empty avatar payload")
 	}
@@ -118,29 +175,29 @@ func persistAvatarDataURL(raw string) (string, error) {
 	), nil
 }
 
-func splitDataURL(raw string) (mimeType string, encoded string, err error) {
-	comma := strings.Index(raw, ",")
-	if comma <= 0 {
-		return "", "", errors.New("invalid data url")
+func detectAvatarExtension(payload []byte, originalName string, contentType string) (string, error) {
+	normalizedType := normalizeMimeType(contentType)
+	if ext, ok := avatarMimeExtensions[normalizedType]; ok {
+		return ext, nil
 	}
 
-	header := raw[:comma]
-	encoded = raw[comma+1:]
-	if !strings.HasPrefix(header, "data:") || !strings.HasSuffix(header, ";base64") {
-		return "", "", errors.New("avatar must be base64 data url")
+	detectedType := normalizeMimeType(http.DetectContentType(payload))
+	if ext, ok := avatarMimeExtensions[detectedType]; ok {
+		return ext, nil
 	}
 
-	mimeType = strings.TrimSuffix(strings.TrimPrefix(header, "data:"), ";base64")
-	if mimeType == "" {
-		return "", "", errors.New("missing avatar mime type")
+	ext := strings.ToLower(filepath.Ext(originalName))
+	if normalizedExt, ok := avatarFileExtensions[ext]; ok {
+		return normalizedExt, nil
 	}
-	return mimeType, encoded, nil
+
+	return "", fmt.Errorf("unsupported avatar mime type: %s", normalizedType)
 }
 
-func randomFilename(ext string) (string, error) {
-	buf := make([]byte, 16)
-	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("generate avatar filename: %w", err)
+func normalizeMimeType(raw string) string {
+	base := strings.TrimSpace(strings.ToLower(raw))
+	if idx := strings.Index(base, ";"); idx >= 0 {
+		base = strings.TrimSpace(base[:idx])
 	}
-	return fmt.Sprintf("%x%s", buf, ext), nil
+	return base
 }

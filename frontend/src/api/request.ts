@@ -37,18 +37,10 @@ service.interceptors.request.use(
     const noAuthUrls = ["/login", "/register"];
     const isNoAuthUrl = noAuthUrls.some((url) => config.url?.includes(url));
 
-    console.log(
-      `[Interceptor] URL: ${config.url}, isNoAuthUrl: ${isNoAuthUrl}`,
-    );
-
     if (!isNoAuthUrl) {
       const token = getToken();
-      console.log(`[Interceptor] Token exists: ${!!token}`);
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
-        console.log(`[Interceptor] Set Authorization header for ${config.url}`);
-      } else {
-        console.log(`[Interceptor] No token for ${config.url}`);
       }
     }
     return config;

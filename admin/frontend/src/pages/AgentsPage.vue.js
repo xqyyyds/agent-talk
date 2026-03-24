@@ -249,6 +249,7 @@ const optimizedPrompt = ref("");
 const testQuestion = ref("这个选题为什么值得持续跟进？");
 const testReply = ref("");
 const avatarFileInput = ref(null);
+const avatarUploading = ref(false);
 const editMode = ref(false);
 const editingAgentId = ref(null);
 const initialEditPayload = ref(null);
@@ -303,7 +304,7 @@ function removeTopic(topic) {
 function triggerAvatarUpload() {
     avatarFileInput.value?.click();
 }
-function handleAvatarUpload(event) {
+async function handleAvatarUpload(event) {
     const input = event.target;
     const file = input.files?.[0];
     if (!file) {
@@ -311,18 +312,34 @@ function handleAvatarUpload(event) {
     }
     if (!file.type.startsWith("image/")) {
         error.value = "请选择图片文件（JPG/PNG/GIF）";
+        input.value = "";
         return;
     }
     if (file.size > 15 * 1024 * 1024) {
         error.value = "头像大小不能超过 15MB";
+        input.value = "";
         return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-        form.avatar = String(reader.result || "");
-        success.value = "头像已载入";
-    };
-    reader.readAsDataURL(file);
+    const previousAvatar = form.avatar;
+    avatarUploading.value = true;
+    clearMessages();
+    try {
+        const { data } = await api.uploadAvatar(file);
+        const nextAvatar = String(data?.data?.avatar || "").trim();
+        if (!nextAvatar) {
+            throw new Error(data?.message || "头像上传失败");
+        }
+        form.avatar = nextAvatar;
+        success.value = "头像上传成功";
+    }
+    catch (err) {
+        form.avatar = previousAvatar;
+        error.value = err?.response?.data?.detail || err?.message || "头像上传失败";
+    }
+    finally {
+        avatarUploading.value = false;
+        input.value = "";
+    }
 }
 function removeAvatar() {
     form.avatar = "";
@@ -1165,8 +1182,10 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ onClick: (__VLS_ctx.triggerAvatarUpload) },
     type: "button",
     ...{ class: "secondary" },
+    disabled: (__VLS_ctx.avatarUploading),
 });
 /** @type {__VLS_StyleScopedClasses['secondary']} */ ;
+(__VLS_ctx.avatarUploading ? "上传中..." : "上传头像");
 if (__VLS_ctx.form.avatar) {
     __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
         ...{ onClick: (__VLS_ctx.removeAvatar) },
@@ -1254,7 +1273,7 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ onClick: (...[$event]) => {
             __VLS_ctx.listFilter = 'all';
             // @ts-ignore
-            [editMode, editMode, form, form, form, form, form, form, formErrors, formErrors, revealCustomApiKey, customModelKeyMasked, customModelKeyMasked, handleAvatarUpload, triggerAvatarUpload, removeAvatar, optimizePrompt, optimizing, optimizing, playground, testing, testing, testQuestion, testReply, submitAgent, saving, saving, saving, resetToCreateMode, listFilter,];
+            [editMode, editMode, form, form, form, form, form, form, formErrors, formErrors, revealCustomApiKey, customModelKeyMasked, customModelKeyMasked, handleAvatarUpload, triggerAvatarUpload, avatarUploading, avatarUploading, removeAvatar, optimizePrompt, optimizing, optimizing, playground, testing, testing, testQuestion, testReply, submitAgent, saving, saving, saving, resetToCreateMode, listFilter,];
         } },
     ...{ class: "secondary" },
     ...{ class: ({ 'is-active': __VLS_ctx.listFilter === 'all' }) },

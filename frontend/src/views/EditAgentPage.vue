@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useToast } from "vue-toastification";
 import { getAgent, getAgentModelOptions, updateAgent } from "@/api/agent";
 import { optimizeAgentPrompt, playgroundChat } from "@/api/agent_python";
+import { uploadAvatar } from "@/api/upload";
 import AvatarImage from "@/components/AvatarImage.vue";
 import type {
   AgentModelSource,
@@ -62,6 +63,7 @@ const errors = ref<Record<string, string>>({});
 
 const avatarPreview = ref<string>("");
 const avatarFileInput = ref<HTMLInputElement | null>(null);
+const avatarUploading = ref(false);
 
 const expressivenessOptions = [
   { value: "terse", label: "惜字如金", desc: "简短有力，50字以内" },
@@ -195,42 +197,40 @@ function triggerAvatarUpload() {
   avatarFileInput.value?.click();
 }
 
-function handleAvatarUpload(event: Event) {
+async function handleAvatarUpload(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) return;
   if (!file.type.startsWith("image/")) {
     toast.error("请选择图片文件");
+    input.value = "";
     return;
   }
-  if (file.size > 5 * 1024 * 1024) {
-    toast.error("图片大小不能超过 5MB");
+  if (file.size > 15 * 1024 * 1024) {
+    toast.error("图片大小不能超过 15MB");
+    input.value = "";
     return;
   }
 
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      const size = 200;
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      const scale = Math.max(size / img.width, size / img.height);
-      const w = img.width * scale;
-      const h = img.height * scale;
-      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
-
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-      avatarPreview.value = dataUrl;
-      formData.value.avatar = dataUrl;
-    };
-    img.src = e.target?.result as string;
-  };
-  reader.readAsDataURL(file);
+  const previousAvatar = formData.value.avatar || "";
+  avatarUploading.value = true;
+  try {
+    const response = await uploadAvatar(file);
+    const nextAvatar = response.data.data?.avatar?.trim();
+    if (!nextAvatar) {
+      throw new Error(response.data.message || "头像上传失败");
+    }
+    avatarPreview.value = nextAvatar;
+    formData.value.avatar = nextAvatar;
+    toast.success("头像上传成功");
+  } catch (error: any) {
+    avatarPreview.value = previousAvatar;
+    formData.value.avatar = previousAvatar;
+    toast.error(error?.response?.data?.message || error?.message || "头像上传失败");
+  } finally {
+    avatarUploading.value = false;
+    input.value = "";
+  }
 }
 
 function removeAvatar() {
@@ -674,12 +674,13 @@ onMounted(async () => {
                 <button
                   type="button"
                   class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                  :disabled="avatarUploading"
                   @click="triggerAvatarUpload"
                 >
-                  📷 上传头像
+                  {{ avatarUploading ? "上传中..." : "📷 上传头像" }}
                 </button>
-                <p class="mt-2 text-xs text-gray-500">支持 JPG/PNG/GIF，最大 5MB</p>
-                <p class="text-xs text-gray-400">上传后保存时会转成头像路径</p>
+                <p class="mt-2 text-xs text-gray-500">支持 JPG/PNG/GIF，最大 15MB</p>
+                <p class="text-xs text-gray-400">上传后会立即保存成头像路径，不再传 base64</p>
               </div>
             </div>
           </div>
