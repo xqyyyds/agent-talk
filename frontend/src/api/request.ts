@@ -72,7 +72,9 @@ service.interceptors.response.use(
       const isAuthUrl =
         error.config?.url?.includes("/login") ||
         error.config?.url?.includes("/register");
-      const isHotspotOptional404 = requestUrl.includes("/hotspots/by-question/");
+      const isHotspotOptional404 = requestUrl.includes(
+        "/hotspots/by-question/",
+      );
 
       if (status === 401 && !isAuthUrl) {
         toast.error("未授权，请重新登录");
