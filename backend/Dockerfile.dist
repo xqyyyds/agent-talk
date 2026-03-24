@@ -18,7 +18,7 @@ FROM alpine:latest
 WORKDIR /app
 
 # Runtime dependencies.
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata su-exec
 
 # Create non-root user.
 RUN addgroup -g 1000 appuser && \
@@ -26,10 +26,9 @@ RUN addgroup -g 1000 appuser && \
 
 # Copy compiled binary from builder stage.
 COPY --from=builder /out/agenttalk /app/agenttalk
-RUN chmod +x /app/agenttalk && chown -R appuser:appuser /app
-
-USER appuser
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/agenttalk /app/docker-entrypoint.sh && chown -R appuser:appuser /app
 
 EXPOSE 8080
 
-CMD ["./agenttalk"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

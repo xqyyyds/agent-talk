@@ -8,6 +8,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { getAnswerDetail, getAnswerList } from "../api/answer";
 import { getMyAgents } from "../api/agent";
+import { getAnswerCollectionStatuses } from "../api/collection";
 import { executeFollow } from "../api/follow";
 import { getHotspotByQuestionId } from "../api/hotspot";
 import { getQuestionDetail } from "../api/question";
@@ -28,6 +29,9 @@ const question = ref<QuestionWithStats | null>(null);
 const answers = ref<AnswerWithStats[]>([]);
 const loading = ref(false);
 const answersLoading = ref(false);
+const answersCursor = ref<number | undefined>(undefined);
+const answersHasMore = ref(true);
+const collectionStatusMap = ref<Record<number, number[]>>({});
 
 const likeCount = ref(0);
 const dislikeCount = ref(0);
@@ -257,38 +261,59 @@ async function loadAnswers() {
         Number(res.data.data.question_id || 0) === questionId
       ) {
         answers.value = [res.data.data];
+        answersHasMore.value = false;
+        answersCursor.value = undefined;
+        await loadCollectionStatuses([res.data.data.id]);
       } else {
         answers.value = [];
       }
       return;
     }
 
-    const merged: AnswerWithStats[] = [];
-    const seen = new Set<number>();
-    let nextCursor: number | undefined = undefined;
+    if (!answersHasMore.value) {
+      return;
+    }
 
-    for (let i = 0; i < 8; i++) {
-      const res = await getAnswerList(questionId, nextCursor, 50);
-      if (!(res.data.code === 200 && res.data.data)) break;
+    const res = await getAnswerList(questionId, answersCursor.value, 20);
+    if (!(res.data.code === 200 && res.data.data)) return;
 
-      const list = res.data.data.list || [];
-      for (const item of list) {
-        if (!seen.has(item.id)) {
-          seen.add(item.id);
-          merged.push(item);
-        }
-      }
-
-      if (!res.data.data.has_more) break;
-      nextCursor = res.data.data.next_cursor;
-      if (!nextCursor) break;
+    const seen = new Set(answers.value.map((item) => item.id));
+    const merged = [...answers.value];
+    const newAnswerIds: number[] = [];
+    for (const item of res.data.data.list || []) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      merged.push(item);
+      newAnswerIds.push(item.id);
     }
 
     answers.value = merged;
+    answersHasMore.value = res.data.data.has_more;
+    answersCursor.value = res.data.data.next_cursor || undefined;
+    await loadCollectionStatuses(newAnswerIds);
   } catch (error) {
     console.error("Failed to load answers:", error);
   } finally {
     answersLoading.value = false;
+  }
+}
+
+async function loadCollectionStatuses(answerIds: number[]) {
+  if (!userStore.user?.token || answerIds.length === 0) {
+    return;
+  }
+
+  try {
+    const res = await getAnswerCollectionStatuses(answerIds);
+    if (!(res.data.code === 200 && res.data.data)) return;
+
+    const nextMap: Record<number, number[]> = { ...collectionStatusMap.value };
+    for (const item of res.data.data.items || []) {
+      nextMap[item.answer_id] = item.collection_ids || [];
+    }
+    collectionStatusMap.value = nextMap;
+  } catch (error) {
+    console.error("Failed to load collection statuses:", error);
   }
 }
 
@@ -396,6 +421,10 @@ function parseEventPayload(raw: any): Record<string, any> {
 }
 
 async function refreshCurrentView() {
+  answers.value = [];
+  answersCursor.value = undefined;
+  answersHasMore.value = true;
+  collectionStatusMap.value = {};
   await loadQuestion();
   await loadHotspotMetaFallback();
   await loadAnswers();
@@ -708,11 +737,25 @@ watch(
             <AnswerItem
               :answer="answer"
               :show-original-question-button="false"
+              :initial-collection-ids="collectionStatusMap[answer.id]"
+              :defer-collection-status="Boolean(userStore.user?.token)"
             />
           </div>
         </div>
         <div
-          v-else
+          v-if="answers.length > 0 && answersHasMore"
+          class="mt-3 flex justify-center"
+        >
+          <button
+            class="rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+            :disabled="answersLoading"
+            @click="loadAnswers"
+          >
+            {{ answersLoading ? "加载中..." : "加载更多回答" }}
+          </button>
+        </div>
+        <div
+          v-else-if="answers.length === 0"
           class="rounded-sm bg-white py-12 text-center text-gray-400 shadow-sm"
         >
           还没有回答
@@ -740,6 +783,8 @@ watch(
           <AnswerItem
             :answer="latestAnswer"
             :show-original-question-button="false"
+            :initial-collection-ids="collectionStatusMap[latestAnswer.id]"
+            :defer-collection-status="Boolean(userStore.user?.token)"
           />
         </div>
         <div

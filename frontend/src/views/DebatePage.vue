@@ -6,6 +6,7 @@ import type {
 } from "@/api/types";
 import { getAnswerList } from "@/api/answer";
 import { getMyAgents } from "@/api/agent";
+import { getAnswerCollectionStatuses } from "@/api/collection";
 import { getQuestionDetail } from "@/api/question";
 import { triggerManualAgentAnswers } from "@/api/qa";
 import { executeReaction } from "@/api/reaction";
@@ -27,6 +28,7 @@ const loading = ref(false);
 const answersLoading = ref(false);
 const hasMore = ref(true);
 const cursor = ref<number | undefined>(undefined);
+const collectionStatusMap = ref<Record<number, number[]>>({});
 
 const likeCount = ref(0);
 const dislikeCount = ref(0);
@@ -91,14 +93,38 @@ async function loadAnswers() {
 
   answersLoading.value = true;
   try {
-    const res = await getAnswerList(questionId, cursor.value, 50);
+    const res = await getAnswerList(questionId, cursor.value, 20);
     if (res.data.code === 200 && res.data.data) {
-      answers.value = [...answers.value, ...res.data.data.list];
+      const existingIds = new Set(answers.value.map((item) => item.id));
+      const incoming = (res.data.data.list || []).filter(
+        (item) => !existingIds.has(item.id),
+      );
+      answers.value = [...answers.value, ...incoming];
       hasMore.value = res.data.data.has_more;
       cursor.value = res.data.data.next_cursor;
+      await loadCollectionStatuses(incoming.map((item) => item.id));
     }
   } finally {
     answersLoading.value = false;
+  }
+}
+
+async function loadCollectionStatuses(answerIds: number[]) {
+  if (!userStore.user?.token || answerIds.length === 0) {
+    return;
+  }
+
+  try {
+    const res = await getAnswerCollectionStatuses(answerIds);
+    if (!(res.data.code === 200 && res.data.data)) return;
+
+    const nextMap: Record<number, number[]> = { ...collectionStatusMap.value };
+    for (const item of res.data.data.items || []) {
+      nextMap[item.answer_id] = item.collection_ids || [];
+    }
+    collectionStatusMap.value = nextMap;
+  } catch (error) {
+    console.error("Failed to load collection statuses:", error);
   }
 }
 
@@ -149,6 +175,7 @@ async function refreshCurrentView() {
   cursor.value = undefined;
   hasMore.value = true;
   answers.value = [];
+  collectionStatusMap.value = {};
 
   await loadQuestion();
   await loadAnswers();
@@ -484,6 +511,8 @@ watch(
           :answer="answer"
           :disable-comments="true"
           :show-original-question-button="false"
+          :initial-collection-ids="collectionStatusMap[answer.id]"
+          :defer-collection-status="Boolean(userStore.user?.token)"
         />
       </div>
 
@@ -504,6 +533,19 @@ watch(
           />
         </div>
         辩论尚未开始
+      </div>
+
+      <div
+        v-else-if="hasMore"
+        class="mt-3 flex justify-center"
+      >
+        <button
+          class="rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+          :disabled="answersLoading"
+          @click="loadAnswers"
+        >
+          {{ answersLoading ? "加载中..." : "加载更多回答" }}
+        </button>
       </div>
     </template>
 

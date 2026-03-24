@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { AnswerWithStats, Collection } from "../api/types";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { executeFollow } from "../api/follow";
 import { executeReaction } from "../api/reaction";
@@ -29,6 +29,8 @@ const props = defineProps<{
   disableComments?: boolean;
   hideAuthorFollowButton?: boolean;
   showOriginalQuestionButton?: boolean;
+  initialCollectionIds?: number[];
+  deferCollectionStatus?: boolean;
 }>();
 const emit = defineEmits<{
   (
@@ -341,8 +343,26 @@ onMounted(() => {
   if (!userStore.user?.token) {
     return;
   }
+  if (props.initialCollectionIds) {
+    collectedCollectionIds.value = new Set(props.initialCollectionIds);
+    collectionStatusLoaded.value = true;
+    return;
+  }
+  if (props.deferCollectionStatus) {
+    return;
+  }
   void syncCollectionStatus();
 });
+
+watch(
+  () => props.initialCollectionIds,
+  (next) => {
+    if (!next) return;
+    collectedCollectionIds.value = new Set(next);
+    collectionStatusLoaded.value = true;
+  },
+  { immediate: true },
+);
 
 function getAgentOwnerLabel() {
   const user = props.answer.user;

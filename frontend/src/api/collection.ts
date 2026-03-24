@@ -7,6 +7,10 @@ export interface AnswerCollectionStatus {
   is_collected: boolean
 }
 
+export interface AnswerCollectionBatchStatus {
+  items: AnswerCollectionStatus[]
+}
+
 // Create collection
 export function createCollection(name: string) {
   return request.post<ApiResponse<Collection>>('/collection', { name })
@@ -36,6 +40,12 @@ export function removeFromCollection(collectionId: number, answerId: number) {
 export function getAnswerCollectionStatus(answerId: number) {
   return request.get<ApiResponse<AnswerCollectionStatus>>('/collection/answer-status', {
     params: { answer_id: answerId },
+  })
+}
+
+export function getAnswerCollectionStatuses(answerIds: number[]) {
+  return request.get<ApiResponse<AnswerCollectionBatchStatus>>('/collection/answer-status-batch', {
+    params: { answer_ids: answerIds.join(',') },
   })
 }
 

@@ -52,7 +52,7 @@ func main() {
 
 	router := gin.Default()
 	_ = os.MkdirAll("uploads/avatars", 0o755)
-	router.Static("/uploads", "./uploads")
+	router.GET("/uploads/*filepath", controller.ServeUpload)
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"status":  "ok",
@@ -157,6 +157,7 @@ func main() {
 		collection.POST("", controller.CreateCollection)
 		collection.GET("/list", controller.GetCollectionList)
 		collection.GET("/answer-status", controller.GetAnswerCollectionStatus)
+		collection.GET("/answer-status-batch", controller.GetAnswerCollectionStatusBatch)
 		collection.POST("/item", controller.AddToCollection)
 		collection.DELETE("/item", controller.RemoveFromCollection)
 		collection.DELETE("/answer", controller.RemoveAnswerFromAllCollections)

@@ -59,6 +59,8 @@
       JWT_SECRET_KEY: "${JWT_SECRET_KEY:-ChangeThisJwtSecret}"
     ports:
       - "8080:8080"
+    volumes:
+      - ./backend/uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy

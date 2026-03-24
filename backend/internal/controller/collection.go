@@ -8,6 +8,7 @@ import (
 	"backend/internal/service"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -26,6 +27,10 @@ type AnswerCollectionStatusResponse struct {
 	AnswerID      uint   `json:"answer_id"`
 	CollectionIDs []uint `json:"collection_ids"`
 	IsCollected   bool   `json:"is_collected"`
+}
+
+type AnswerCollectionBatchStatusResponse struct {
+	Items []AnswerCollectionStatusResponse `json:"items"`
 }
 
 // CreateCollection 创建收藏夹
@@ -361,6 +366,90 @@ func GetAnswerCollectionStatus(c *gin.Context) {
 			AnswerID:      uint(answerID),
 			CollectionIDs: collectionIDs,
 			IsCollected:   len(collectionIDs) > 0,
+		},
+	})
+}
+
+// GetAnswerCollectionStatusBatch 批量获取回答收藏状态
+func GetAnswerCollectionStatusBatch(c *gin.Context) {
+	rawIDs := c.Query("answer_ids")
+	if rawIDs == "" {
+		c.JSON(http.StatusBadRequest, Response{
+			Code:    400,
+			Message: "参数错误",
+		})
+		return
+	}
+
+	userID, exists := c.Get(middleware.IdentityKey)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, Response{
+			Code:    401,
+			Message: "未授权",
+		})
+		return
+	}
+
+	answerIDs := make([]uint, 0)
+	seen := make(map[uint]struct{})
+	for _, part := range strings.Split(rawIDs, ",") {
+		id, err := strconv.ParseUint(strings.TrimSpace(part), 10, 64)
+		if err != nil || id == 0 {
+			continue
+		}
+		uid := uint(id)
+		if _, ok := seen[uid]; ok {
+			continue
+		}
+		seen[uid] = struct{}{}
+		answerIDs = append(answerIDs, uid)
+	}
+	if len(answerIDs) == 0 {
+		c.JSON(http.StatusBadRequest, Response{
+			Code:    400,
+			Message: "参数错误",
+		})
+		return
+	}
+
+	type batchRow struct {
+		AnswerID     uint `gorm:"column:answer_id"`
+		CollectionID uint `gorm:"column:collection_id"`
+	}
+
+	uid := uint(userID.(float64))
+	var rows []batchRow
+	if err := database.DB.Table("collection_items").
+		Select("collection_items.answer_id, collection_items.collection_id").
+		Joins("JOIN collections ON collections.id = collection_items.collection_id").
+		Where("collections.user_id = ? AND collection_items.answer_id IN ? AND collection_items.deleted_at IS NULL AND collections.deleted_at IS NULL", uid, answerIDs).
+		Scan(&rows).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, Response{
+			Code:    500,
+			Message: "查询失败",
+		})
+		return
+	}
+
+	grouped := make(map[uint][]uint, len(answerIDs))
+	for _, row := range rows {
+		grouped[row.AnswerID] = append(grouped[row.AnswerID], row.CollectionID)
+	}
+
+	items := make([]AnswerCollectionStatusResponse, 0, len(answerIDs))
+	for _, answerID := range answerIDs {
+		collectionIDs := grouped[answerID]
+		items = append(items, AnswerCollectionStatusResponse{
+			AnswerID:      answerID,
+			CollectionIDs: collectionIDs,
+			IsCollected:   len(collectionIDs) > 0,
+		})
+	}
+
+	c.JSON(http.StatusOK, Response{
+		Code: 200,
+		Data: AnswerCollectionBatchStatusResponse{
+			Items: items,
 		},
 	})
 }
