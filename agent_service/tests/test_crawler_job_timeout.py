@@ -14,16 +14,23 @@ from app.core import crawler_jobs, runtime_config  # noqa: E402
 class _DummyRedis:
     def __init__(self) -> None:
         self.set_calls: list[dict[str, object]] = []
+        self.hash_data: dict[str, str] = {}
+        self.hset_calls: list[dict[str, object]] = []
 
     async def set(self, key, value, nx=None, ex=None):
         self.set_calls.append({"key": key, "value": value, "nx": nx, "ex": ex})
         return True
 
     async def hset(self, key, mapping):
+        self.hset_calls.append({"key": key, "mapping": mapping})
+        self.hash_data.update(mapping)
         return 1
 
     async def expire(self, key, seconds):
         return True
+
+    async def hgetall(self, key):
+        return dict(self.hash_data)
 
     async def lpush(self, key, value):
         return 1
@@ -36,6 +43,10 @@ class _DummyRedis:
 
 
 class TestCrawlerRuntimeTimeout(unittest.TestCase):
+    def setUp(self) -> None:
+        runtime_config._cache["data"] = None
+        runtime_config._cache["ts"] = 0.0
+
     def test_runtime_config_normalizes_crawler_timeout(self) -> None:
         self.assertEqual(
             300,
@@ -44,6 +55,23 @@ class TestCrawlerRuntimeTimeout(unittest.TestCase):
         self.assertEqual(
             900,
             runtime_config._normalize_value("crawler_job_timeout_seconds", "900"),
+        )
+
+    def test_get_runtime_config_upgrades_legacy_900_timeout_to_1800(self) -> None:
+        dummy_redis = _DummyRedis()
+        dummy_redis.hash_data["crawler_job_timeout_seconds"] = "900"
+
+        with patch.object(runtime_config.settings, "crawler_job_timeout_seconds", 1800), patch(
+            "app.core.runtime_config.Redis.from_url",
+            return_value=dummy_redis,
+        ):
+            config = asyncio.run(runtime_config.get_runtime_config(force_refresh=True))
+
+        self.assertEqual(1800, config["crawler_job_timeout_seconds"])
+        self.assertEqual(1, len(dummy_redis.hset_calls))
+        self.assertEqual(
+            "1800",
+            dummy_redis.hset_calls[0]["mapping"]["crawler_job_timeout_seconds"],
         )
 
     def test_create_job_uses_runtime_timeout_seconds(self) -> None:

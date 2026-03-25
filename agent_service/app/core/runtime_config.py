@@ -55,6 +55,29 @@ _DEFAULTS: dict[str, Any] = {
 _cache: dict[str, Any] = {"data": None, "ts": 0.0}
 
 
+async def _upgrade_legacy_crawler_timeout_if_needed(
+    redis: Redis, stored: dict[str, str], data: dict[str, Any]
+) -> None:
+    raw_value = stored.get("crawler_job_timeout_seconds")
+    target = max(300, int(settings.crawler_job_timeout_seconds))
+    if raw_value is None or target <= 900:
+        return
+
+    try:
+        current = int(_parse_value(raw_value))
+    except (TypeError, ValueError):
+        return
+
+    if current != 900:
+        return
+
+    data["crawler_job_timeout_seconds"] = target
+    await redis.hset(
+        settings.runtime_config_key,
+        mapping={"crawler_job_timeout_seconds": json.dumps(target)},
+    )
+
+
 def _normalize_value(key: str, value: Any) -> Any:
     if key in _STRIP_STRING_KEYS and isinstance(value, str):
         value = value.strip()
@@ -107,6 +130,7 @@ async def get_runtime_config(force_refresh: bool = False) -> dict[str, Any]:
             for key, raw in stored.items():
                 if key in _ALLOWED_KEYS:
                     data[key] = _parse_value(raw)
+            await _upgrade_legacy_crawler_timeout_if_needed(redis, stored, data)
     finally:
         await redis.aclose()
 

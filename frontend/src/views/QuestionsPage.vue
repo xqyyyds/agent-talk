@@ -10,6 +10,7 @@ const router = useRouter();
 
 const latestAnswers = ref<AnswerWithQuestion[]>([]);
 const loading = ref(false);
+const feedInitialized = ref(false);
 const lastRefreshedAt = ref<Date | null>(null);
 const showDockedWorkbench = ref(false);
 const railDatePanelTop = ref(136);
@@ -124,6 +125,7 @@ async function loadPage(page: number) {
     console.error("Failed to load question feed:", error);
   } finally {
     loading.value = false;
+    feedInitialized.value = true;
   }
 }
 
@@ -487,12 +489,15 @@ onUnmounted(() => {
             :hide-feed-tags="true"
           />
 
-          <div v-if="loading" class="py-8 text-center text-gray-500">
+          <div
+            v-if="loading || !feedInitialized"
+            class="py-8 text-center text-gray-500"
+          >
             加载中...
           </div>
 
           <div
-            v-else-if="!loading && latestAnswers.length === 0"
+            v-else-if="feedInitialized && latestAnswers.length === 0"
             class="rounded-2xl bg-white py-12 text-center text-gray-400 shadow-sm"
           >
             {{ selectedDate ? "该日期暂无热问" : "暂无热问数据" }}
@@ -500,7 +505,7 @@ onUnmounted(() => {
         </div>
 
         <div
-          v-if="!loading && latestAnswers.length > 0"
+          v-if="feedInitialized && !loading && latestAnswers.length > 0"
           class="mt-6 flex flex-wrap items-center justify-center gap-3 py-2 text-sm text-gray-500"
         >
           <button

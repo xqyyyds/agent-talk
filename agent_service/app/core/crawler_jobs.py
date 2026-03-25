@@ -62,7 +62,7 @@ class CrawlerJobManager:
         self._active_tasks: dict[str, asyncio.Task] = {}
         self._lock = asyncio.Lock()
         self._default_job_timeout_seconds = max(
-            300, int(getattr(settings, "crawler_job_timeout_seconds", 900))
+            300, int(getattr(settings, "crawler_job_timeout_seconds", 1800))
         )
         self._default_lock_ttl_seconds = max(
             self._default_job_timeout_seconds + 600,

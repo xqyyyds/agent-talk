@@ -20,6 +20,15 @@ type CrawlerJob = {
   error_message: string;
 };
 
+type CrawlerFailureAlert = {
+  job_id: string;
+  source: CrawlerSource;
+  status: string;
+  reason: string;
+};
+
+const CRAWLER_FAILURE_ALERT_ACK_KEY = "agenttalk:ops:crawler-failure-alert-acks";
+
 const loading = ref(false);
 const output = ref("");
 
@@ -30,7 +39,8 @@ const crawlerLoadingSource = ref<CrawlerSource | null>(null);
 const crawlerJobs = ref<CrawlerJob[]>([]);
 const selectedJobId = ref("");
 const selectedJobLogs = ref<string[]>([]);
-const notifiedFailedJobs = new Set<string>();
+const crawlerFailureAlerts = ref<CrawlerFailureAlert[]>([]);
+const acknowledgedFailedJobs = new Set<string>();
 
 const configSaving = ref(false);
 const showOpenAIKey = ref(false);
@@ -50,6 +60,7 @@ const runtimeConfig = reactive({
   tavily_api_key: "",
   zhihu_cookie: "",
   weibo_cookie: "",
+  crawler_job_timeout_seconds: 1800,
 });
 
 const qaPolicy = reactive({
@@ -120,6 +131,38 @@ function syncCrawlerPolling() {
   }
 }
 
+function loadAcknowledgedFailedJobs() {
+  try {
+    const raw = localStorage.getItem(CRAWLER_FAILURE_ALERT_ACK_KEY);
+    if (!raw) return;
+    const items = JSON.parse(raw);
+    if (!Array.isArray(items)) return;
+    for (const item of items) {
+      const jobId = String(item || "").trim();
+      if (jobId) {
+        acknowledgedFailedJobs.add(jobId);
+      }
+    }
+  } catch {
+    // ignore malformed localStorage values
+  }
+}
+
+function persistAcknowledgedFailedJobs() {
+  localStorage.setItem(
+    CRAWLER_FAILURE_ALERT_ACK_KEY,
+    JSON.stringify(Array.from(acknowledgedFailedJobs).slice(-200)),
+  );
+}
+
+function acknowledgeCrawlerFailure(jobId: string) {
+  acknowledgedFailedJobs.add(jobId);
+  persistAcknowledgedFailedJobs();
+  crawlerFailureAlerts.value = crawlerFailureAlerts.value.filter(
+    (item) => item.job_id !== jobId,
+  );
+}
+
 async function runAction(action: () => Promise<any>) {
   loading.value = true;
   try {
@@ -167,15 +210,21 @@ async function loadCrawlerJobLogs(jobId: string) {
 }
 
 function checkCrawlerFailures() {
+  const nextAlerts: CrawlerFailureAlert[] = [];
   for (const job of crawlerJobs.value) {
-    if ((job.status === "failed" || job.status === "timeout") && !notifiedFailedJobs.has(job.job_id)) {
-      notifiedFailedJobs.add(job.job_id);
-      const reason = job.error_message || "crawler failed";
-      window.alert(
-        `${job.source === "zhihu" ? "知乎" : "微博"} 爬虫任务失败（${statusLabel(job.status)}）。\n原因：${reason}\n请在后台更新 Cookie 后重试。`,
-      );
+    if (
+      (job.status === "failed" || job.status === "timeout")
+      && !acknowledgedFailedJobs.has(job.job_id)
+    ) {
+      nextAlerts.push({
+        job_id: job.job_id,
+        source: job.source,
+        status: job.status,
+        reason: job.error_message || "crawler failed",
+      });
     }
   }
+  crawlerFailureAlerts.value = nextAlerts;
 }
 
 async function loadCrawlerJobs(silent = false) {
@@ -251,6 +300,9 @@ async function loadRuntimeConfig() {
     runtimeConfig.tavily_api_key = cfg.tavily_api_key || "";
     runtimeConfig.zhihu_cookie = cfg.zhihu_cookie || "";
     runtimeConfig.weibo_cookie = cfg.weibo_cookie || "";
+    runtimeConfig.crawler_job_timeout_seconds = Number(
+      cfg.crawler_job_timeout_seconds ?? 1800,
+    );
     return data;
   });
 }
@@ -272,6 +324,10 @@ async function saveRuntimeConfig() {
       tavily_api_key: trim(runtimeConfig.tavily_api_key),
       zhihu_cookie: runtimeConfig.zhihu_cookie,
       weibo_cookie: runtimeConfig.weibo_cookie,
+      crawler_job_timeout_seconds: Math.max(
+        300,
+        Number(runtimeConfig.crawler_job_timeout_seconds || 1800),
+      ),
     };
     const { data } = await api.updateRuntimeConfig(payload);
     output.value = JSON.stringify(data, null, 2);
@@ -355,6 +411,7 @@ async function saveRealtimePolicy() {
 }
 
 onMounted(async () => {
+  loadAcknowledgedFailedJobs();
   await Promise.all([
     refreshDebateStatus(),
     loadRuntimeConfig(),
@@ -404,8 +461,27 @@ onUnmounted(() => {
         <button class="secondary" @click="loadCrawlerJobs()">刷新任务</button>
       </div>
       <p class="form-note" style="margin-bottom: 10px">
-        已启用同源互斥。任务失败时会弹窗提醒你更新 Cookie。
+        已启用同源互斥。任务失败时会在页面内提醒你更新 Cookie，不会反复弹窗打断操作。
       </p>
+      <div v-if="crawlerFailureAlerts.length > 0" class="stack" style="margin-bottom: 10px">
+        <div
+          v-for="alert in crawlerFailureAlerts"
+          :key="alert.job_id"
+          class="panel-soft"
+          style="border: 1px solid #f59e0b; background: #fff7ed"
+        >
+          <div style="font-weight: 600; color: #9a3412; margin-bottom: 6px">
+            {{ alert.source === "zhihu" ? "知乎" : "微博" }} 爬虫任务失败（{{ statusLabel(alert.status) }}）
+          </div>
+          <div style="font-size: 13px; white-space: pre-wrap; color: #7c2d12">
+            原因：{{ alert.reason }}
+          </div>
+          <div class="row" style="margin-top: 8px">
+            <button class="secondary" @click="selectJob(alert.job_id)">查看日志</button>
+            <button class="primary" @click="acknowledgeCrawlerFailure(alert.job_id)">知道了</button>
+          </div>
+        </div>
+      </div>
       <div class="stack" style="margin-bottom: 10px">
         <label>知乎 Cookie（快捷更新）</label>
         <textarea
@@ -419,9 +495,17 @@ onUnmounted(() => {
           rows="3"
           placeholder="粘贴完整微博 Cookie，保存后立即生效"
         />
+        <label>爬虫超时(秒)</label>
+        <input
+          v-model.number="runtimeConfig.crawler_job_timeout_seconds"
+          type="number"
+          min="300"
+          max="7200"
+        />
+        <p class="form-note">默认 1800 秒，即 30 分钟。</p>
         <div class="row">
           <button class="primary" :disabled="configSaving" @click="saveRuntimeConfig">
-            保存 Cookie
+            保存 Cookie 与超时配置
           </button>
         </div>
       </div>

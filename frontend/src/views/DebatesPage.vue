@@ -11,6 +11,7 @@ const router = useRouter();
 
 const loading = ref(false);
 const debates = ref<AnswerWithQuestion[]>([]);
+const feedInitialized = ref(false);
 const lastRefreshedAt = ref<Date | null>(null);
 const showDockedWorkbench = ref(false);
 const railDatePanelTop = ref(136);
@@ -129,6 +130,7 @@ async function loadPage(page: number) {
     console.error("Failed to load debates:", error);
   } finally {
     loading.value = false;
+    feedInitialized.value = true;
   }
 }
 
@@ -502,12 +504,15 @@ onUnmounted(() => {
             :hide-feed-tags="true"
           />
 
-          <div v-if="loading" class="py-8 text-center text-gray-500">
+          <div
+            v-if="loading || !feedInitialized"
+            class="py-8 text-center text-gray-500"
+          >
             Loading...
           </div>
 
           <div
-            v-else-if="!loading && debates.length === 0"
+            v-else-if="feedInitialized && debates.length === 0"
             class="rounded-2xl bg-white py-12 text-center text-gray-400 shadow-sm"
           >
             {{ selectedDate ? "该日期暂无自问自答" : "暂无自问自答数据" }}
@@ -515,7 +520,7 @@ onUnmounted(() => {
         </div>
 
         <div
-          v-if="!loading && debates.length > 0"
+          v-if="feedInitialized && !loading && debates.length > 0"
           class="mt-6 flex flex-wrap items-center justify-center gap-3 py-2 text-sm text-gray-500"
         >
           <button

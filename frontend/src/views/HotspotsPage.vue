@@ -23,6 +23,7 @@ const toast = useToast();
 
 const hotspots = ref<Hotspot[]>([]);
 const loading = ref(false);
+const listInitialized = ref(false);
 const page = ref(1);
 const total = ref(0);
 const pageSize = 20;
@@ -31,6 +32,7 @@ const pageJumpInput = ref("");
 const activeSource = ref<string>("");
 const availableDates = ref<string[]>([]);
 const allDates = ref<string[]>([]);
+const datesInitialized = ref(false);
 const selectedDate = ref("");
 const calendarDate = ref("");
 const minSelectableDate = ref("");
@@ -39,6 +41,7 @@ const datesLoading = ref(false);
 
 const selectedHotspot = ref<Hotspot | null>(null);
 const detailLoading = ref(false);
+const detailInitialized = ref(false);
 const agentAnswers = ref<AnswerWithStats[]>([]);
 const agentAnswersLoading = ref(false);
 const lastRefreshedAt = ref<Date | null>(null);
@@ -225,12 +228,20 @@ async function loadDates() {
     console.error("加载日期列表失败:", error);
   } finally {
     datesLoading.value = false;
+    datesInitialized.value = true;
     scheduleRailDatePanelPositionUpdate();
   }
 }
 
 async function loadHotspots() {
-  if (!selectedDate.value || isDetailMode.value) return;
+  if (isDetailMode.value) return;
+  if (!selectedDate.value) {
+    hotspots.value = [];
+    total.value = 0;
+    listInitialized.value = true;
+    loading.value = false;
+    return;
+  }
   loading.value = true;
   try {
     const res = await getHotspotList({
@@ -248,11 +259,16 @@ async function loadHotspots() {
     console.error("加载热点失败:", error);
   } finally {
     loading.value = false;
+    listInitialized.value = true;
   }
 }
 
 async function loadDetailById(id: number) {
-  if (!id) return;
+  if (!id) {
+    selectedHotspot.value = null;
+    detailInitialized.value = true;
+    return;
+  }
   detailLoading.value = true;
   selectedHotspot.value = null;
   agentAnswers.value = [];
@@ -272,6 +288,7 @@ async function loadDetailById(id: number) {
     console.error("加载热点详情失败:", error);
   } finally {
     detailLoading.value = false;
+    detailInitialized.value = true;
   }
 }
 
@@ -439,6 +456,10 @@ const questionStream = useStreamChannel("questions", (message) => {
 watch(activeSource, () => {
   if (isDetailMode.value) return;
   selectedDate.value = "";
+  hotspots.value = [];
+  total.value = 0;
+  datesInitialized.value = false;
+  listInitialized.value = false;
   void loadDates();
 });
 
@@ -455,8 +476,12 @@ watch(page, () => {
 
 watch(hotspotId, (id) => {
   if (id > 0) {
+    detailInitialized.value = false;
     void loadDetailById(id);
+    return;
   }
+  detailInitialized.value = false;
+  selectedHotspot.value = null;
 });
 
 watch(
@@ -489,6 +514,7 @@ watch(
 
 onMounted(() => {
   if (isDetailMode.value) {
+    detailInitialized.value = false;
     void loadDetailById(hotspotId.value);
     return;
   }
@@ -498,6 +524,8 @@ onMounted(() => {
   if (sourceKeys.has(sourceFromQuery)) {
     activeSource.value = sourceFromQuery;
   }
+  datesInitialized.value = false;
+  listInitialized.value = false;
   void loadDates();
   scheduleRailDatePanelPositionUpdate();
   window.addEventListener("resize", scheduleRailDatePanelPositionUpdate);
@@ -546,7 +574,7 @@ onUnmounted(() => {
       </button>
 
       <div
-        v-if="detailLoading"
+        v-if="!detailInitialized"
         class="rounded-sm bg-white py-12 text-center text-gray-400 shadow-sm"
       >
         <div
@@ -735,7 +763,7 @@ onUnmounted(() => {
       </template>
 
       <div
-        v-else
+        v-else-if="detailInitialized"
         class="rounded-sm bg-white py-12 text-center text-gray-400 shadow-sm"
       >
         热点详情不存在或已删除
@@ -776,7 +804,7 @@ onUnmounted(() => {
         >
           <div class="mb-2 text-sm font-semibold text-gray-500">日期</div>
           <div
-            v-if="datesLoading"
+            v-if="!datesInitialized || datesLoading"
             class="py-2 text-center text-xs text-gray-400"
           >
             加载中...
@@ -827,7 +855,10 @@ onUnmounted(() => {
         class="mb-4 space-y-3 rounded-2xl bg-white p-4 shadow-sm lg:hidden"
       >
         <div class="text-sm font-semibold text-gray-500">日期</div>
-        <div v-if="datesLoading" class="py-1 text-center text-xs text-gray-400">
+        <div
+          v-if="!datesInitialized || datesLoading"
+          class="py-1 text-center text-xs text-gray-400"
+        >
           加载中...
         </div>
         <div
@@ -950,7 +981,7 @@ onUnmounted(() => {
           </div>
 
           <div
-            v-if="loading"
+            v-if="!listInitialized"
             class="rounded-sm bg-white py-8 text-center text-gray-500 shadow-sm"
           >
             加载中...

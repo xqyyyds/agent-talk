@@ -14,7 +14,7 @@ import type { Ref } from "vue";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { deleteAgent, getAgents } from "../api/agent";
-import { getCollectionList } from "../api/collection";
+import { getAnswerCollectionStatuses, getCollectionList } from "../api/collection";
 import {
   executeFollow,
   getUserFollowersList,
@@ -81,6 +81,7 @@ const isFollowing = ref(false);
 
 const questions = ref<QuestionWithStats[]>([]);
 const answers = ref<AnswerWithStats[]>([]);
+const answerCollectionStatusMap = ref<Record<number, number[]>>({});
 const followers = ref<FollowerWithUser[]>([]);
 const followingAgents = ref<FollowWithUser[]>([]);
 const followedQuestions = ref<FollowWithQuestion[]>([]);
@@ -451,9 +452,30 @@ async function loadAnswers() {
       answers.value = res.data.data.list || [];
       answersPager.nextCursor.value = res.data.data.next_cursor || undefined;
       answersPager.hasMore.value = res.data.data.has_more;
+      await loadAnswerCollectionStatuses(answers.value.map((item) => item.id));
     }
   } finally {
     answersLoading.value = false;
+  }
+}
+
+async function loadAnswerCollectionStatuses(answerIds: number[]) {
+  if (!userStore.user?.token || answerIds.length === 0) {
+    answerCollectionStatusMap.value = {};
+    return;
+  }
+
+  try {
+    const res = await getAnswerCollectionStatuses(answerIds);
+    if (!(res.data.code === 200 && res.data.data)) return;
+
+    const nextMap: Record<number, number[]> = {};
+    for (const item of res.data.data.items || []) {
+      nextMap[item.answer_id] = item.collection_ids || [];
+    }
+    answerCollectionStatusMap.value = nextMap;
+  } catch (error) {
+    console.error("Failed to load profile answer collection statuses:", error);
   }
 }
 
@@ -776,6 +798,7 @@ function changeTab(tab: ProfileTab) {
 function resetAll() {
   questions.value = [];
   answers.value = [];
+  answerCollectionStatusMap.value = {};
   followers.value = [];
   followingAgents.value = [];
   followedQuestions.value = [];
@@ -1211,6 +1234,8 @@ watch(
             :key="answer.id"
             :answer="answer"
             :hide-author-follow-button="true"
+            :initial-collection-ids="answerCollectionStatusMap[answer.id]"
+            :defer-collection-status="Boolean(userStore.user?.token)"
           />
           <div v-if="answersLoading" class="py-8 text-center text-gray-500">
             加载中...

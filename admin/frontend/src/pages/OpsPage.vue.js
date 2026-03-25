@@ -2,6 +2,7 @@ import { onMounted, onUnmounted, reactive, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { api } from "../api";
 import { formatBeijingDateTime } from "../utils/datetime";
+const CRAWLER_FAILURE_ALERT_ACK_KEY = "agenttalk:ops:crawler-failure-alert-acks";
 const loading = ref(false);
 const output = ref("");
 const debateStatus = ref(null);
@@ -10,7 +11,8 @@ const crawlerLoadingSource = ref(null);
 const crawlerJobs = ref([]);
 const selectedJobId = ref("");
 const selectedJobLogs = ref([]);
-const notifiedFailedJobs = new Set();
+const crawlerFailureAlerts = ref([]);
+const acknowledgedFailedJobs = new Set();
 const configSaving = ref(false);
 const showOpenAIKey = ref(false);
 const showSecondaryOpenAIKey = ref(false);
@@ -28,6 +30,7 @@ const runtimeConfig = reactive({
     tavily_api_key: "",
     zhihu_cookie: "",
     weibo_cookie: "",
+    crawler_job_timeout_seconds: 1800,
 });
 const qaPolicy = reactive({
     enabled: true,
@@ -87,6 +90,33 @@ function syncCrawlerPolling() {
         crawlerPollTimer = null;
     }
 }
+function loadAcknowledgedFailedJobs() {
+    try {
+        const raw = localStorage.getItem(CRAWLER_FAILURE_ALERT_ACK_KEY);
+        if (!raw)
+            return;
+        const items = JSON.parse(raw);
+        if (!Array.isArray(items))
+            return;
+        for (const item of items) {
+            const jobId = String(item || "").trim();
+            if (jobId) {
+                acknowledgedFailedJobs.add(jobId);
+            }
+        }
+    }
+    catch {
+        // ignore malformed localStorage values
+    }
+}
+function persistAcknowledgedFailedJobs() {
+    localStorage.setItem(CRAWLER_FAILURE_ALERT_ACK_KEY, JSON.stringify(Array.from(acknowledgedFailedJobs).slice(-200)));
+}
+function acknowledgeCrawlerFailure(jobId) {
+    acknowledgedFailedJobs.add(jobId);
+    persistAcknowledgedFailedJobs();
+    crawlerFailureAlerts.value = crawlerFailureAlerts.value.filter((item) => item.job_id !== jobId);
+}
 async function runAction(action) {
     loading.value = true;
     try {
@@ -130,13 +160,19 @@ async function loadCrawlerJobLogs(jobId) {
     }
 }
 function checkCrawlerFailures() {
+    const nextAlerts = [];
     for (const job of crawlerJobs.value) {
-        if ((job.status === "failed" || job.status === "timeout") && !notifiedFailedJobs.has(job.job_id)) {
-            notifiedFailedJobs.add(job.job_id);
-            const reason = job.error_message || "crawler failed";
-            window.alert(`${job.source === "zhihu" ? "知乎" : "微博"} 爬虫任务失败（${statusLabel(job.status)}）。\n原因：${reason}\n请在后台更新 Cookie 后重试。`);
+        if ((job.status === "failed" || job.status === "timeout")
+            && !acknowledgedFailedJobs.has(job.job_id)) {
+            nextAlerts.push({
+                job_id: job.job_id,
+                source: job.source,
+                status: job.status,
+                reason: job.error_message || "crawler failed",
+            });
         }
     }
+    crawlerFailureAlerts.value = nextAlerts;
 }
 async function loadCrawlerJobs(silent = false) {
     try {
@@ -209,6 +245,7 @@ async function loadRuntimeConfig() {
         runtimeConfig.tavily_api_key = cfg.tavily_api_key || "";
         runtimeConfig.zhihu_cookie = cfg.zhihu_cookie || "";
         runtimeConfig.weibo_cookie = cfg.weibo_cookie || "";
+        runtimeConfig.crawler_job_timeout_seconds = Number(cfg.crawler_job_timeout_seconds ?? 1800);
         return data;
     });
 }
@@ -229,6 +266,7 @@ async function saveRuntimeConfig() {
             tavily_api_key: trim(runtimeConfig.tavily_api_key),
             zhihu_cookie: runtimeConfig.zhihu_cookie,
             weibo_cookie: runtimeConfig.weibo_cookie,
+            crawler_job_timeout_seconds: Math.max(300, Number(runtimeConfig.crawler_job_timeout_seconds || 1800)),
         };
         const { data } = await api.updateRuntimeConfig(payload);
         output.value = JSON.stringify(data, null, 2);
@@ -316,6 +354,7 @@ async function saveRealtimePolicy() {
     }
 }
 onMounted(async () => {
+    loadAcknowledgedFailedJobs();
     await Promise.all([
         refreshDebateStatus(),
         loadRuntimeConfig(),
@@ -435,6 +474,59 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
     ...{ style: {} },
 });
 /** @type {__VLS_StyleScopedClasses['form-note']} */ ;
+if (__VLS_ctx.crawlerFailureAlerts.length > 0) {
+    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+        ...{ class: "stack" },
+        ...{ style: {} },
+    });
+    /** @type {__VLS_StyleScopedClasses['stack']} */ ;
+    for (const [alert] of __VLS_vFor((__VLS_ctx.crawlerFailureAlerts))) {
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            key: (alert.job_id),
+            ...{ class: "panel-soft" },
+            ...{ style: {} },
+        });
+        /** @type {__VLS_StyleScopedClasses['panel-soft']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            ...{ style: {} },
+        });
+        (alert.source === "zhihu" ? "知乎" : "微博");
+        (__VLS_ctx.statusLabel(alert.status));
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            ...{ style: {} },
+        });
+        (alert.reason);
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            ...{ class: "row" },
+            ...{ style: {} },
+        });
+        /** @type {__VLS_StyleScopedClasses['row']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!(__VLS_ctx.crawlerFailureAlerts.length > 0))
+                        return;
+                    __VLS_ctx.selectJob(alert.job_id);
+                    // @ts-ignore
+                    [crawlerFailureAlerts, crawlerFailureAlerts, statusLabel, selectJob,];
+                } },
+            ...{ class: "secondary" },
+        });
+        /** @type {__VLS_StyleScopedClasses['secondary']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!(__VLS_ctx.crawlerFailureAlerts.length > 0))
+                        return;
+                    __VLS_ctx.acknowledgeCrawlerFailure(alert.job_id);
+                    // @ts-ignore
+                    [acknowledgeCrawlerFailure,];
+                } },
+            ...{ class: "primary" },
+        });
+        /** @type {__VLS_StyleScopedClasses['primary']} */ ;
+        // @ts-ignore
+        [];
+    }
+}
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "stack" },
     ...{ style: {} },
@@ -452,6 +544,17 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.textarea)({
     rows: "3",
     placeholder: "粘贴完整微博 Cookie，保存后立即生效",
 });
+__VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+    type: "number",
+    min: "300",
+    max: "7200",
+});
+(__VLS_ctx.runtimeConfig.crawler_job_timeout_seconds);
+__VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+    ...{ class: "form-note" },
+});
+/** @type {__VLS_StyleScopedClasses['form-note']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "row" },
 });
@@ -505,7 +608,7 @@ for (const [job] of __VLS_vFor((__VLS_ctx.crawlerJobs))) {
         ...{ onClick: (...[$event]) => {
                 __VLS_ctx.selectJob(job.job_id);
                 // @ts-ignore
-                [runtimeConfig, runtimeConfig, saveRuntimeConfig, configSaving, crawlerJobs, statusLabel, formatDateTime, selectJob,];
+                [statusLabel, selectJob, runtimeConfig, runtimeConfig, runtimeConfig, saveRuntimeConfig, configSaving, crawlerJobs, formatDateTime,];
             } },
         ...{ class: "secondary" },
     });

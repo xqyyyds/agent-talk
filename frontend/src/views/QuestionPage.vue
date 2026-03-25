@@ -29,6 +29,8 @@ const question = ref<QuestionWithStats | null>(null);
 const answers = ref<AnswerWithStats[]>([]);
 const loading = ref(false);
 const answersLoading = ref(false);
+const pageInitialized = ref(false);
+const answersInitialized = ref(false);
 const answersCursor = ref<number | undefined>(undefined);
 const answersHasMore = ref(true);
 const collectionStatusMap = ref<Record<number, number[]>>({});
@@ -60,6 +62,7 @@ const isAgentAnswerRoute = computed(
   () => route.name === "question-agent-answer-page",
 );
 const hasPendingUpdates = computed(() => pendingAnswerCount.value > 0);
+let currentRouteLoadId = 0;
 
 function decodeText(raw: string | undefined | null): string {
   if (!raw) return "";
@@ -143,7 +146,23 @@ const hotspotMeta = computed(() => {
   };
 });
 
-async function loadHotspotMetaFallback() {
+function resetQuestionState() {
+  question.value = null;
+  hotspotMetaFallback.value = null;
+  likeCount.value = 0;
+  dislikeCount.value = 0;
+  reactionStatus.value = 0;
+  isFollowingQuestion.value = false;
+}
+
+function resetAnswerState() {
+  answers.value = [];
+  answersCursor.value = undefined;
+  answersHasMore.value = true;
+  collectionStatusMap.value = {};
+}
+
+async function loadHotspotMetaFallback(requestId = currentRouteLoadId) {
   const questionId = Number(route.params.questionId);
   if (!questionId) return;
   if (question.value?.hotspot) {
@@ -152,6 +171,7 @@ async function loadHotspotMetaFallback() {
 
   try {
     const res = await getHotspotByQuestionId(questionId);
+    if (requestId !== currentRouteLoadId) return;
     if (res.data.code === 200 && res.data.data) {
       hotspotMetaFallback.value = {
         source: res.data.data.source || "",
@@ -165,6 +185,7 @@ async function loadHotspotMetaFallback() {
     // Not all questions come from hotspot sources.
   }
 
+  if (requestId !== currentRouteLoadId) return;
   hotspotMetaFallback.value = null;
 }
 
@@ -221,13 +242,14 @@ const latestAnswer = computed(() => {
   return [...answers.value].sort((a, b) => b.id - a.id)[0] || null;
 });
 
-async function loadQuestion() {
+async function loadQuestion(requestId = currentRouteLoadId) {
   const questionId = Number(route.params.questionId);
   if (!questionId) return;
 
   loading.value = true;
   try {
     const res = await getQuestionDetail(questionId);
+    if (requestId !== currentRouteLoadId) return;
     if (res.data.code === 200 && res.data.data) {
       question.value = res.data.data;
       likeCount.value = res.data.data.stats.like_count;
@@ -238,11 +260,14 @@ async function loadQuestion() {
   } catch (error) {
     console.error("Failed to load question:", error);
   } finally {
-    loading.value = false;
+    if (requestId === currentRouteLoadId) {
+      loading.value = false;
+      pageInitialized.value = true;
+    }
   }
 }
 
-async function loadAnswers() {
+async function loadAnswers(requestId = currentRouteLoadId) {
   const questionId = Number(route.params.questionId);
   if (!questionId || answersLoading.value) return;
 
@@ -251,10 +276,13 @@ async function loadAnswers() {
     if (isAnswerDetailMode.value) {
       const answerId = Number(route.params.answerId || 0);
       if (!answerId) {
-        answers.value = [];
+        if (requestId === currentRouteLoadId) {
+          answers.value = [];
+        }
         return;
       }
       const res = await getAnswerDetail(answerId);
+      if (requestId !== currentRouteLoadId) return;
       if (
         res.data.code === 200 &&
         res.data.data &&
@@ -270,11 +298,12 @@ async function loadAnswers() {
       return;
     }
 
-    if (!answersHasMore.value) {
+      if (!answersHasMore.value) {
       return;
     }
 
     const res = await getAnswerList(questionId, answersCursor.value, 20);
+    if (requestId !== currentRouteLoadId) return;
     if (!(res.data.code === 200 && res.data.data)) return;
 
     const seen = new Set(answers.value.map((item) => item.id));
@@ -294,7 +323,10 @@ async function loadAnswers() {
   } catch (error) {
     console.error("Failed to load answers:", error);
   } finally {
-    answersLoading.value = false;
+    if (requestId === currentRouteLoadId) {
+      answersLoading.value = false;
+      answersInitialized.value = true;
+    }
   }
 }
 
@@ -420,16 +452,32 @@ function parseEventPayload(raw: any): Record<string, any> {
   return data && typeof data === "object" ? data : {};
 }
 
-async function refreshCurrentView() {
-  answers.value = [];
-  answersCursor.value = undefined;
-  answersHasMore.value = true;
-  collectionStatusMap.value = {};
-  await loadQuestion();
-  await loadHotspotMetaFallback();
-  await loadAnswers();
+async function refreshCurrentView(options: { hardReset?: boolean } = {}) {
+  const { hardReset = false } = options;
+  const requestId = ++currentRouteLoadId;
+
+  if (hardReset) {
+    resetQuestionState();
+    pageInitialized.value = false;
+  }
+
+  resetAnswerState();
+  answersInitialized.value = false;
   pendingAnswerCount.value = 0;
+
+  await Promise.allSettled([loadQuestion(requestId), loadAnswers(requestId)]);
+  if (requestId !== currentRouteLoadId) return;
+  await loadHotspotMetaFallback(requestId);
+  if (requestId !== currentRouteLoadId) return;
   lastRefreshedAt.value = new Date();
+}
+
+function handleRefreshClick() {
+  void refreshCurrentView();
+}
+
+function handleLoadMoreAnswers() {
+  void loadAnswers();
 }
 
 useStreamChannel("questions", (message) => {
@@ -443,7 +491,7 @@ useStreamChannel("questions", (message) => {
 });
 
 onMounted(async () => {
-  await refreshCurrentView();
+  await refreshCurrentView({ hardReset: true });
   if (isAgentAnswerRoute.value) {
     await openAgentAnswerDialog();
   }
@@ -452,18 +500,16 @@ onMounted(async () => {
 watch(
   () => route.params.questionId,
   async () => {
-    question.value = null;
-    answers.value = [];
-    hotspotMetaFallback.value = null;
-    pendingAnswerCount.value = 0;
-    await refreshCurrentView();
+    await refreshCurrentView({ hardReset: true });
   },
 );
 
 watch(
   () => route.params.answerId,
   async () => {
-    await loadAnswers();
+    resetAnswerState();
+    answersInitialized.value = false;
+    await loadAnswers(++currentRouteLoadId);
   },
 );
 </script>
@@ -484,7 +530,7 @@ watch(
         <button
           class="group flex h-9 w-9 items-center justify-center rounded-full border border-sky-200 bg-white text-sky-700 transition hover:bg-sky-50 disabled:opacity-50"
           :disabled="loading || answersLoading"
-          @click="refreshCurrentView"
+          @click="handleRefreshClick"
         >
           <span
             class="i-mdi-refresh text-lg"
@@ -498,7 +544,12 @@ watch(
       </div>
     </div>
 
-    <div v-if="loading" class="py-12 text-center text-gray-500">加载中...</div>
+    <div
+      v-if="loading && !pageInitialized"
+      class="py-12 text-center text-gray-500"
+    >
+      加载中...
+    </div>
 
     <template v-else-if="question">
       <div class="mb-2.5 rounded-sm bg-white p-6 shadow-sm">
@@ -749,13 +800,19 @@ watch(
           <button
             class="rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 disabled:opacity-50"
             :disabled="answersLoading"
-            @click="loadAnswers"
+            @click="handleLoadMoreAnswers"
           >
             {{ answersLoading ? "加载中..." : "加载更多回答" }}
           </button>
         </div>
         <div
-          v-else-if="answers.length === 0"
+          v-else-if="!answersInitialized"
+          class="rounded-sm bg-white py-12 text-center text-gray-400 shadow-sm"
+        >
+          加载回答中...
+        </div>
+        <div
+          v-else-if="answersInitialized && answers.length === 0"
           class="rounded-sm bg-white py-12 text-center text-gray-400 shadow-sm"
         >
           还没有回答
@@ -786,6 +843,12 @@ watch(
             :initial-collection-ids="collectionStatusMap[latestAnswer.id]"
             :defer-collection-status="Boolean(userStore.user?.token)"
           />
+        </div>
+        <div
+          v-else-if="!answersInitialized"
+          class="rounded-sm bg-white py-12 text-center text-gray-400 shadow-sm"
+        >
+          加载回答中...
         </div>
         <div
           v-else
@@ -882,7 +945,10 @@ watch(
       </div>
     </template>
 
-    <div v-else-if="!loading" class="py-12 text-center text-gray-400">
+    <div
+      v-else-if="pageInitialized && !loading"
+      class="py-12 text-center text-gray-400"
+    >
       问题不存在
     </div>
   </div>
