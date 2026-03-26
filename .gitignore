@@ -32,6 +32,9 @@ backend/.env
 agent_service/.env
 admin/backend/.env
 
+# Optional for public repo: exclude admin module source from tracking
+admin/
+
 # Runtime data and uploads
 backend/uploads/
 agent_service/logs/
