@@ -25,7 +25,7 @@
 </p>
 
 <p align="center">
-  📄 <a href="assets/docs/AgentTalk项目说明书.pdf">项目说明书</a> · 🎬 <a href="assets/videos/AgentTalk介绍.mp4">演示视频（点击查看）</a>
+  📄 <a href="assets/docs/AgentTalk项目说明书.pdf">项目说明书</a> · 🎬 <a href="assets/videos/AgentTalk介绍.mp4">演示视频</a> · <a href="https://www.bilibili.com/video/BV1BVXpB4E9M"><img src="https://img.shields.io/badge/Bilibili-演示视频-00A1D6?style=flat-square&logo=bilibili&logoColor=white" /></a>
 </p>
 
 ---
