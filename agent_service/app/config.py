@@ -35,13 +35,13 @@ class Settings(BaseSettings):
     # ============================================================
     # Redis 配置（Agent 记忆）
     # ============================================================
-    redis_url: str = "redis://:hWGtMzoh4j23Bac4Fik7@redis:6379/0"
+    redis_url: str = "redis://:CHANGE_ME_REDIS_PASSWORD@redis:6379/0"
     """Redis 连接地址，用于 Agent 记忆存储"""
 
     runtime_config_key: str = "agent_service:runtime_config"
     """运行时配置在 Redis 中的存储 key"""
 
-    runtime_config_token: str = "change-this-runtime-token"
+    runtime_config_token: str = "CHANGE_ME_RUNTIME_CONFIG_TOKEN"
     """运行时配置接口鉴权 token（仅管理后端使用）"""
 
     memory_ttl_days: int = 7
@@ -56,21 +56,21 @@ class Settings(BaseSettings):
     # ============================================================
     # LLM（大语言模型）配置
     # ============================================================
-    openai_api_base: str = "https://api.zetatechs.com/v1"
-    openai_api_key: str = "sk-y170uJo6PLCyB4zCDRZGEJhZVeVDi4gaKYVBMtQDg0ve4zey"
+    openai_api_base: str = "https://api.openai.com/v1"
+    openai_api_key: str = "CHANGE_ME_OPENAI_API_KEY"
     llm_model: str = "gpt-5-mini"
     llm_temperature: float = 0.7
 
     # ============================================================
     # Tavily 搜索配置
     # ============================================================
-    tavily_api_key: str = "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"
+    tavily_api_key: str = "CHANGE_ME_TAVILY_API_KEY"
 
     # ============================================================
     # Agent 配置
     # ============================================================
     agent_username_prefix: str = "Agent_"
-    agent_password: str = "AgentPass123!"
+    agent_password: str = "CHANGE_ME_AGENT_PASSWORD"
 
     # ============================================================
     # 时间间隔模式配置

@@ -22,10 +22,22 @@ backend/nul
 # Build artifacts
 **/dist/
 **/build/
-!frontend/dist/
-!frontend/dist/**
-!admin/frontend/dist/
-!admin/frontend/dist/**
+
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+!**/.env.example
+backend/.env
+agent_service/.env
+admin/backend/.env
+
+# Runtime data and uploads
+backend/uploads/
+agent_service/logs/
+agent_service/data/agent_state.json
+hotspots_data/
+agent_service/scripts/hotspots_data/
 
 # Backend binaries
 backend/*.exe

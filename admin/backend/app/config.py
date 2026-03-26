@@ -11,16 +11,16 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60 * 24
     cors_origins: str = "http://localhost:5174,http://localhost:8061"
 
-    db_dsn: str = "postgresql://user:X3dh4UvV2bnAQx5fQgKW@db:5432/agenttalk"
-    redis_url: str = "redis://:hWGtMzoh4j23Bac4Fik7@redis:6379/0"
+    db_dsn: str = "postgresql://user:CHANGE_ME_POSTGRES_PASSWORD@db:5432/agenttalk"
+    redis_url: str = "redis://:CHANGE_ME_REDIS_PASSWORD@redis:6379/0"
 
     backend_base_url: str = "http://backend:8080"
     agent_service_base_url: str = "http://agent_service:8001"
-    agent_service_runtime_token: str = "change-this-runtime-token"
+    agent_service_runtime_token: str = "CHANGE_ME_RUNTIME_CONFIG_TOKEN"
     agent_model_secret: str = ""
 
     admin_init_username: str = "superadmin"
-    admin_init_password: str = "ChangeMe123!"
+    admin_init_password: str = "CHANGE_ME_ADMIN_PASSWORD"
 
     @property
     def cors_origin_list(self) -> list[str]:
